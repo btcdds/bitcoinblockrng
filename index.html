@@ -11,9 +11,12 @@
     .wrap { max-width: 920px; margin: 40px auto; padding: 0 16px; }
     .card { background: #111a2b; border: 1px solid #1b2844; border-radius: var(--radius); box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 20px; }
     h1 { margin: 0 0 6px; font-weight: 800; letter-spacing: .2px; }
+    h2 { margin: 14px 0 6px; font-weight: 800; letter-spacing: .2px; }
+    p.muted { color: #9fb0d3; margin-top: 6px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 16px; }
     label { font-size: 12px; color: #9fb0d3; display:block; margin-bottom: 6px; }
-    input, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a3a61; background: #0e172a; color: #e6edf7; font-size: 14px; }
+    input, select, textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a3a61; background: #0e172a; color: #e6edf7; font-size: 14px; }
+    textarea { min-height: 120px; }
     button { padding: 12px 16px; border-radius: 999px; border: 0; background: #4f7cff; color: white; font-weight: 700; cursor: pointer; }
     button[disabled] { opacity: .6; cursor: not-allowed; }
     .row { display:flex; gap: 10px; align-items:center; flex-wrap: wrap; }
@@ -26,16 +29,52 @@
     .warn { color: #ffd479; }
     .err { color: #ff8a8a; }
     footer { margin: 28px 0; color:#88a0ca; font-size: 12px; }
+    a { color: #9ec4ff; text-decoration: none; }
     .hidden { display:none; }
     .btn-secondary { background: #24385f; }
+    pre { background:#0e172a; border:1px solid #2a3a61; border-radius: 12px; padding: 12px; overflow:auto; }
     .donation { margin-top: 20px; text-align: center; }
     .donation img { max-width: 200px; height: auto; display: block; margin: 10px auto; }
+    .donation p { font-size: 14px; color: #9fb0d3; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <section id="app" class="card">
+
+    <!-- Landing Page -->
+    <section id="landing" class="card">
       <h1>Bitcoin Block RNG</h1>
+      <p class="muted">Provably-fair randomness derived from the <strong>next mined Bitcoin block</strong>, using only public explorers. No servers, no private nodes.</p>
+
+      <h2>How it works (short version)</h2>
+      <ol class="small">
+        <li>We record the current tip height and wait for the <strong>next block</strong>.</li>
+        <li>When it arrives, we take its block hash, reverse byte order (LE→BE), and interpret it as a 256‑bit integer.</li>
+        <li>We map that integer into your chosen range using <em>rejection sampling</em> (prevents modulo bias).</li>
+        <li>For multiple numbers, we iteratively <code>SHA‑256</code> the previous 256‑bit value between draws.</li>
+      </ol>
+
+      <h2>Copy verification recipe</h2>
+      <p class="small">Use this generic recipe to verify any result. After a reveal, we also provide a one-click copy with the exact values used.</p>
+      <textarea id="generic-recipe" class="mono" readonly>Verification recipe (generic):
+1. Get block height H and little-endian hash LE from an explorer (mempool.space or blockstream.info).
+2. Convert LE → BE by reversing byte order.
+3. Interpret BE as bigint X = int.from_bytes(BE, 'big').
+4. Let N = max - min + 1, M = 2**256, threshold = M - (M % N).
+5. If X >= threshold: X = SHA256(X) as 32 bytes big-endian and repeat step 5.
+6. result = min + (X % N).
+7. For multiple draws: after each result, set X = SHA256(X) and repeat step 4.
+</textarea>
+      <div class="row" style="margin-top:8px;">
+        <button id="copy-generic" class="btn-secondary">Copy generic recipe</button>
+        <button id="goto-app">Go to generator →</button>
+      </div>
+    </section>
+
+    <!-- App Page -->
+    <section id="app" class="card hidden">
+      <h1>Bitcoin Block RNG</h1>
+      <p class="muted">Enter how many numbers (max <strong>10</strong>) and a range. We’ll wait for the <strong>next Bitcoin block</strong> and map its hash to your range using unbiased rejection sampling. We use public explorers (no private node required).</p>
 
       <div class="grid">
         <div>
@@ -71,18 +110,22 @@
       <div id="out"></div>
 
       <footer>
+        <div>Verification: After reveal, we show the block height & hash and the exact mapping. Anyone can independently verify with any node or explorer.</div>
         <div class="donation">
           <p>Enjoying the randomness? Help keep this project running with a Lightning tip:</p>
           <img id="donation-qr" src="" alt="Lightning Donation QR Code" />
         </div>
       </footer>
     </section>
+
   </div>
 
   <script>
     'use strict';
     document.addEventListener('DOMContentLoaded', () => {
       const qs = (s)=>document.querySelector(s);
+      const landing = qs('#landing');
+      const appPage = qs('#app');
       const goBtn = qs('#go');
       const stopBtn = qs('#stop');
       const out = qs('#out');
@@ -98,27 +141,24 @@
       let lastTipTimestampSec = null;       // unix seconds
       let waitingStartSec = null;           // unix seconds when waiting begins
 
-      // 1s UI ticker (no API calls). Keeps ETA/since accurate and updates waiting elapsed pill.
+      // 1s UI ticker (no API calls)
       let uiTicker = null;
       function startUiTicker(){
         if (uiTicker) return;
         uiTicker = setInterval(()=>{
-          // Since last block + ETA
           if (typeof lastTipTimestampSec === 'number'){
             const nowSec = Math.floor(Date.now()/1000);
             const since = Math.max(0, nowSec - lastTipTimestampSec);
             sinceEl.textContent = 'Since last block: ' + fmtDuration(since);
             etaEl.textContent = 'ETA: ' + formatEta(since);
           }
-          // Waiting elapsed pill (updates every second without API)
           if (typeof waitingStartSec === 'number'){
             const nowSec = Math.floor(Date.now()/1000);
             const elapsed = Math.max(0, nowSec - waitingStartSec);
-            statusEl.innerHTML = '<span class="pill small">Waiting… elapsed ' + fmtDuration(elapsed) + '</span>';
+            statusEl.innerHTML = `<span class="pill small">Waiting… elapsed ${fmtDuration(elapsed)}</span>`;
           }
         }, 1000);
       }
-      function stopUiTicker(){ if (uiTicker) { clearInterval(uiTicker); uiTicker = null; } }
 
       function setTipState(height, timestampSec){
         const nowSec = Math.floor(Date.now()/1000);
@@ -126,6 +166,18 @@
         lastTipTimestampSec = Math.min(Number(timestampSec)||0, nowSec);
         tipEl.textContent = 'Tip: #' + lastTipHeight.toLocaleString();
       }
+
+      // Navigation
+      qs('#goto-app').addEventListener('click', ()=>{ landing.classList.add('hidden'); appPage.classList.remove('hidden'); });
+      qs('#copy-generic').addEventListener('click', async ()=>{
+        const t = qs('#generic-recipe');
+        const text = t.value;
+        try {
+          if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); }
+          else { t.select(); t.setSelectionRange(0, text.length); document.execCommand('copy'); }
+          statusEl.innerHTML = '<span class="small ok">Copied generic verification recipe.</span>';
+        } catch (e) { statusEl.innerHTML = '<span class="small err">Copy failed: ' + e.message + '</span>'; }
+      });
 
       // QR loader (no upload)
       (function loadQR(){
@@ -208,7 +260,7 @@
         goBtn.disabled = true; stopBtn.disabled = false; waitController = { cancelled: false };
         try{
           clearInterval(metaTimer); // pause network polling while waiting
-          waitingStartSec = Math.floor(Date.now()/1000); // 1s ticker shows elapsed
+          waitingStartSec = Math.floor(Date.now()/1000);
           const startTipRaw = await prov.tipHeight();
           const startTip = typeof startTipRaw === 'string' ? parseInt(startTipRaw,10) : startTipRaw;
           try{ const startHash = await prov.hashByHeight(startTip); const startBlock = await prov.block(startHash.trim()); setTipState(startTip, startBlock.timestamp); }catch(_){ }
@@ -226,7 +278,7 @@
       async function waitForNextHeight(prov, startTip, controller){
         while(true){
           if (controller?.cancelled) return null;
-          await sleep(10000); // 10s polling; elapsed handled by UI ticker
+          await sleep(10000);
           try{
             const hRaw = await prov.tipHeight();
             const tip = typeof hRaw === 'string' ? parseInt(hRaw,10) : hRaw;
@@ -237,12 +289,12 @@
 
       function renderResult({height, hash, min, max, draws}){
         const short = (h)=> h.slice(0,10) + '…' + h.slice(-8);
-        const items = draws.map((d,i)=>(
+        const items = draws.map((d,i)=>
           '<li>Draw ' + (i+1) + ': <strong class="mono">' + d.value + '</strong>' +
           '<br><span class="small">entropy[' + i + '] base10:</span> <span class="mono small">' + d.base10 + '</span>' +
           '<br><span class="small">entropy[' + i + '] hex:</span> <span class="mono small">' + d.base16 + '</span>' +
           '</li>'
-        )).join('');
+        ).join('');
         const beList = draws.map(d=>d.base16).join('\n');
         const base10List = draws.map(d=>d.base10).join('\n');
         const recipe =
@@ -268,18 +320,18 @@
             '<div class="small" style="margin-top:8px;">Verification: Take the block hash (little‑endian from explorer), reverse to big‑endian, interpret as 256‑bit, then rejection‑sample into your range. Between draws, SHA‑256 the previous 256‑bit value.</div>' +
           '</div>';
         qs('#copy-specific').addEventListener('click', async ()=>{
-          try { await navigator.clipboard.writeText(recipe); toast('Copied verification for this result.', 'ok'); }
-          catch (e) { toast('Copy failed: ' + e.message, 'err'); }
+          try { await navigator.clipboard.writeText(recipe); statusEl.innerHTML = '<span class="small ok">Copied verification for this result.</span>'; }
+          catch (e) { statusEl.innerHTML = '<span class="small err">Copy failed: ' + e.message + '</span>'; }
         });
       }
 
-      function toast(t, cls='warn'){ statusEl.innerHTML = '<span class="small ' + cls + '">' + t + '</span>'; }
+      function toast(t, cls='warn'){ statusEl.innerHTML = '<span class="small ' + cls + '\">' + t + '</span>'; }
       function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
       function clampInt(x, lo, hi){ if(!Number.isFinite(x)) return lo; return Math.max(lo, Math.min(hi, x)); }
       function parseSafeInt(x){ const n = Number(x); return Number.isFinite(n) ? Math.floor(n) : NaN; }
 
-      // quick sanity: make sure newline join is escaped correctly
-      console.debug('join\n ok?', ['a','b'].join('\n') === 'a\nb');
+      // Boot
+      (async function(){ await updateTipMeta(); setInterval(updateTipMeta, 60000); startUiTicker(); })();
     });
   </script>
 </body>

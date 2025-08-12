@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bitcoin Block RNG</title>
+  <style>
+    :root { --radius: 16px; }
+    html, body { height: 100%; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif; margin: 0; background: #0b1320; color: #f2f5f9; }
+    .wrap { max-width: 920px; margin: 40px auto; padding: 0 16px; }
+    .card { background: #111a2b; border: 1px solid #1b2844; border-radius: var(--radius); box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 20px; }
+    h1 { margin: 0 0 6px; font-weight: 800; letter-spacing: .2px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 16px; }
+    label { font-size: 12px; color: #9fb0d3; display:block; margin-bottom: 6px; }
+    input, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a3a61; background: #0e172a; color: #e6edf7; font-size: 14px; }
+    button { padding: 12px 16px; border-radius: 999px; border: 0; background: #4f7cff; color: white; font-weight: 700; cursor: pointer; }
+    button[disabled] { opacity: .6; cursor: not-allowed; }
+    .row { display:flex; gap: 10px; align-items:center; flex-wrap: wrap; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .pill { background:#0e172a; border:1px solid #2a3a61; padding: 6px 10px; border-radius: 999px; }
+    .status { margin-top: 12px; display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+    .result { margin-top: 18px; padding: 14px; background:#0e172a; border:1px solid #2a3a61; border-radius: 14px; }
+    .small { font-size: 12px; color: #9fb0d3; }
+    .ok { color: #96e6a1; }
+    .warn { color: #ffd479; }
+    .err { color: #ff8a8a; }
+    footer { margin: 28px 0; color:#88a0ca; font-size: 12px; }
+    .hidden { display:none; }
+    .btn-secondary { background: #24385f; }
+    .donation { margin-top: 20px; text-align: center; }
+    .donation img { max-width: 200px; height: auto; display: block; margin: 10px auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section id="app" class="card">
+      <h1>Bitcoin Block RNG</h1>
+
+      <div class="grid">
+        <div>
+          <label for="count">How many numbers? <span class="small">(max 10)</span></label>
+          <input id="count" type="number" min="1" max="10" value="1" />
+        </div>
+        <div>
+          <label for="min">Min</label>
+          <input id="min" type="number" value="1" />
+        </div>
+        <div>
+          <label for="max">Max <span class="small">(≤ 1e12)</span></label>
+          <input id="max" type="number" value="100" />
+        </div>
+        <div>
+          <label for="provider">Data provider</label>
+          <select id="provider">
+            <option value="mempool">mempool.space (REST)</option>
+            <option value="blockstream">blockstream.info (Esplora)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top: 16px;">
+        <button id="go">Begin</button>
+        <button id="stop" class="btn-secondary" disabled>Stop</button>
+        <span id="tip" class="pill small">Tip: --</span>
+        <span id="eta" class="pill small">ETA: --</span>
+        <span id="since" class="pill small">Since last block: --</span>
+      </div>
+
+      <div id="status" class="status small"></div>
+      <div id="out"></div>
+
+      <footer>
+        <div class="donation">
+          <p>Enjoying the randomness? Help keep this project running with a Lightning tip:</p>
+          <img id="donation-qr" src="" alt="Lightning Donation QR Code" />
+        </div>
+      </footer>
+    </section>
+  </div>
+
+  <script>
+    'use strict';
+    document.addEventListener('DOMContentLoaded', () => {
+      const qs = (s)=>document.querySelector(s);
+      const goBtn = qs('#go');
+      const stopBtn = qs('#stop');
+      const out = qs('#out');
+      const statusEl = qs('#status');
+      const etaEl = qs('#eta');
+      const sinceEl = qs('#since');
+      const tipEl = qs('#tip');
+      const providerSel = qs('#provider');
+      const qrImg = qs('#donation-qr');
+
+      // --- Local state for 1s UI ticker ---
+      let lastTipHeight = null;             // number
+      let lastTipTimestampSec = null;       // unix seconds
+      let waitingStartSec = null;           // unix seconds when waiting begins
+
+      // 1s UI ticker (no API calls). Keeps ETA/since accurate and updates waiting elapsed pill.
+      let uiTicker = null;
+      function startUiTicker(){
+        if (uiTicker) return;
+        uiTicker = setInterval(()=>{
+          // Since last block + ETA
+          if (typeof lastTipTimestampSec === 'number'){
+            const nowSec = Math.floor(Date.now()/1000);
+            const since = Math.max(0, nowSec - lastTipTimestampSec);
+            sinceEl.textContent = 'Since last block: ' + fmtDuration(since);
+            etaEl.textContent = 'ETA: ' + formatEta(since);
+          }
+          // Waiting elapsed pill (updates every second without API)
+          if (typeof waitingStartSec === 'number'){
+            const nowSec = Math.floor(Date.now()/1000);
+            const elapsed = Math.max(0, nowSec - waitingStartSec);
+            statusEl.innerHTML = '<span class="pill small">Waiting… elapsed ' + fmtDuration(elapsed) + '</span>';
+          }
+        }, 1000);
+      }
+      function stopUiTicker(){ if (uiTicker) { clearInterval(uiTicker); uiTicker = null; } }
+
+      function setTipState(height, timestampSec){
+        const nowSec = Math.floor(Date.now()/1000);
+        lastTipHeight = Number(height);
+        lastTipTimestampSec = Math.min(Number(timestampSec)||0, nowSec);
+        tipEl.textContent = 'Tip: #' + lastTipHeight.toLocaleString();
+      }
+
+      // QR loader (no upload)
+      (function loadQR(){
+        const candidates = ['lnurladdress.png','./lnurladdress.png','/lnurladdress.png','/mnt/data/lnurladdress.png'];
+        let idx = 0;
+        const tryNext = () => {
+          if (!qrImg) return;
+          if (idx >= candidates.length) { qrImg.classList.add('hidden'); return; }
+          const url = candidates[idx++];
+          qrImg.onerror = tryNext; qrImg.src = url;
+        };
+        tryNext();
+      })();
+
+      // Providers
+      const providers = {
+        mempool: {
+          tipHeight: async ()=> fetchText('https://mempool.space/api/blocks/tip/height'),
+          hashByHeight: async (h)=> fetchText('https://mempool.space/api/block-height/' + h),
+          block: async (hash)=> fetchJson('https://mempool.space/api/block/' + hash),
+        },
+        blockstream: {
+          tipHeight: async ()=> fetchText('https://blockstream.info/api/blocks/tip/height'),
+          hashByHeight: async (h)=> fetchText('https://blockstream.info/api/block-height/' + h),
+          block: async (hash)=> fetchJson('https://blockstream.info/api/block/' + hash),
+        }
+      };
+      async function fetchJson(url){ const r = await fetch(url, { cache:'no-store' }); if(!r.ok) throw new Error(url+': HTTP '+r.status); return r.json(); }
+      async function fetchText(url){ const r = await fetch(url, { cache:'no-store' }); if(!r.ok) throw new Error(url+': HTTP '+r.status); return r.text(); }
+
+      // Hash helpers
+      function leHexToBeHex(hex){ const clean = hex.trim(); const bytes = clean.match(/.{1,2}/g) || []; return bytes.reverse().join(''); }
+      function bigIntFromHex(hex){ return BigInt('0x' + hex); }
+      function mapToRange(uniform256, min, max){ const range = BigInt(max - min + 1); const modulus = 1n << 256n; const threshold = modulus - (modulus % range); const x = uniform256; if (x >= threshold) return null; const offset = x % range; return Number(BigInt(min) + offset); }
+      async function sha256Hex(hex){ const match = hex.match(/.{1,2}/g) || []; const buf = new Uint8Array(match.map(b => parseInt(b,16))); const digest = await crypto.subtle.digest('SHA-256', buf); return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+
+      async function drawsFromBlockHash(blockHashLE, count, min, max){
+        const draws = [];
+        let be = leHexToBeHex(blockHashLE);
+        let x = bigIntFromHex(be);
+        for (let i=0;i<count;i++){
+          while (true){
+            const val = mapToRange(x, min, max);
+            if (val !== null){ draws.push({ base16:'0x'+be, base10: bigIntFromHex(be).toString(10), value: val }); break; }
+            be = await sha256Hex(be); x = bigIntFromHex(be);
+          }
+          be = await sha256Hex(be); x = bigIntFromHex(be);
+        }
+        return draws;
+      }
+
+      // Meta polling (60s) with 1s UI ticker
+      let metaTimer;
+      async function updateTipMeta(){
+        const prov = providers[providerSel.value];
+        try{
+          const hRaw = await prov.tipHeight();
+          const tipH = typeof hRaw === 'string' ? parseInt(hRaw,10) : hRaw;
+          const lastHash = await prov.hashByHeight(tipH);
+          const b = await prov.block(lastHash.trim());
+          setTipState(tipH, b.timestamp);
+        }catch(e){ /* keep last state */ }
+      }
+      function formatEta(sinceSec){ if (sinceSec >= 600) { const overdue = sinceSec - 600; return 'Overdue by ' + fmtDuration(overdue); } const eta = Math.max(0, 600 - sinceSec); return fmtDuration(eta); }
+      function fmtDuration(s){ const m = Math.floor(s/60), r = s%60; return m<=0 ? r + 's' : m + 'm ' + r + 's'; }
+      async function main(){ await updateTipMeta(); clearInterval(metaTimer); metaTimer = setInterval(updateTipMeta, 60000); startUiTicker(); }
+      main();
+
+      // Begin / Stop
+      let waitController = null;
+      goBtn.addEventListener('click', async ()=>{
+        out.innerHTML = '';
+        statusEl.textContent = '';
+        const count = clampInt(parseInt(qs('#count').value,10), 1, 10);
+        const min = parseSafeInt(qs('#min').value);
+        const max = parseSafeInt(qs('#max').value);
+        const prov = providers[providerSel.value];
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) { toast('Invalid range (max >= min).', 'err'); return; }
+        if ((max - min) > 1e12) { toast('Range too large (max-min ≤ 1e12).', 'warn'); return; }
+        goBtn.disabled = true; stopBtn.disabled = false; waitController = { cancelled: false };
+        try{
+          clearInterval(metaTimer); // pause network polling while waiting
+          waitingStartSec = Math.floor(Date.now()/1000); // 1s ticker shows elapsed
+          const startTipRaw = await prov.tipHeight();
+          const startTip = typeof startTipRaw === 'string' ? parseInt(startTipRaw,10) : startTipRaw;
+          try{ const startHash = await prov.hashByHeight(startTip); const startBlock = await prov.block(startHash.trim()); setTipState(startTip, startBlock.timestamp); }catch(_){ }
+          const nextHeight = await waitForNextHeight(prov, startTip, waitController);
+          if (nextHeight === null) { toast('Stopped.', 'warn'); goBtn.disabled = false; stopBtn.disabled = true; waitingStartSec = null; main(); return; }
+          const hash = (await prov.hashByHeight(nextHeight)).trim();
+          const block = await prov.block(hash); setTipState(nextHeight, block.timestamp);
+          const draws = await drawsFromBlockHash(hash, count, min, max);
+          renderResult({height: nextHeight, hash, min, max, draws});
+          goBtn.disabled = false; stopBtn.disabled = true; waitController = null; waitingStartSec = null; main();
+        }catch(e){ toast('Error: ' + e.message, 'err'); goBtn.disabled = false; stopBtn.disabled = true; waitController = null; waitingStartSec = null; main(); }
+      });
+      stopBtn.addEventListener('click', ()=>{ if (waitController) { waitController.cancelled = true; toast('Stopped waiting for next block.', 'warn'); waitingStartSec = null; } });
+
+      async function waitForNextHeight(prov, startTip, controller){
+        while(true){
+          if (controller?.cancelled) return null;
+          await sleep(10000); // 10s polling; elapsed handled by UI ticker
+          try{
+            const hRaw = await prov.tipHeight();
+            const tip = typeof hRaw === 'string' ? parseInt(hRaw,10) : hRaw;
+            if (tip > startTip) return tip;
+          }catch(e){ /* ignore transient */ }
+        }
+      }
+
+      function renderResult({height, hash, min, max, draws}){
+        const short = (h)=> h.slice(0,10) + '…' + h.slice(-8);
+        const items = draws.map((d,i)=>(
+          '<li>Draw ' + (i+1) + ': <strong class="mono">' + d.value + '</strong>' +
+          '<br><span class="small">entropy[' + i + '] base10:</span> <span class="mono small">' + d.base10 + '</span>' +
+          '<br><span class="small">entropy[' + i + '] hex:</span> <span class="mono small">' + d.base16 + '</span>' +
+          '</li>'
+        )).join('');
+        const beList = draws.map(d=>d.base16).join('\n');
+        const base10List = draws.map(d=>d.base10).join('\n');
+        const recipe =
+          'Verification (specific):\n' +
+          'Block height: ' + height + '\n' +
+          'Block hash (LE hex): ' + hash + '\n' +
+          'Entropy values (BE hex, per draw):\n' + beList + '\n' +
+          'Entropy values (base10, per draw):\n' + base10List + '\n' +
+          'Range: [' + min + ', ' + max + ']\n' +
+          'Mapping: 2^256 space with rejection sampling to avoid bias. For each draw i:\n' +
+          '1) Take entropy[i] as 256-bit big-endian integer X.\n' +
+          '2) N = max - min + 1; M = 2^256; threshold = M - (M % N).\n' +
+          '3) If X >= threshold: X = SHA256(X) and repeat step 3.\n' +
+          '4) result[i] = min + (X % N).\n' +
+          '5) For multiple draws, between draws set X = SHA256(prev X).';
+        out.innerHTML =
+          '<div class="result">' +
+            '<div><strong>Range:</strong> <span class="mono">[' + min + ', ' + max + ']</span></div>' +
+            '<div><strong>Block:</strong> <span class="mono">#' + height.toLocaleString() + '</span></div>' +
+            '<div><strong>Hash (LE):</strong> <span class="mono" title="' + hash + '">' + short(hash) + '</span></div>' +
+            '<ol style="margin-top:8px;">' + items + '</ol>' +
+            '<div class="row" style="margin-top:8px;"><button id="copy-specific" class="btn-secondary">Copy verification for this result</button></div>' +
+            '<div class="small" style="margin-top:8px;">Verification: Take the block hash (little‑endian from explorer), reverse to big‑endian, interpret as 256‑bit, then rejection‑sample into your range. Between draws, SHA‑256 the previous 256‑bit value.</div>' +
+          '</div>';
+        qs('#copy-specific').addEventListener('click', async ()=>{
+          try { await navigator.clipboard.writeText(recipe); toast('Copied verification for this result.', 'ok'); }
+          catch (e) { toast('Copy failed: ' + e.message, 'err'); }
+        });
+      }
+
+      function toast(t, cls='warn'){ statusEl.innerHTML = '<span class="small ' + cls + '">' + t + '</span>'; }
+      function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+      function clampInt(x, lo, hi){ if(!Number.isFinite(x)) return lo; return Math.max(lo, Math.min(hi, x)); }
+      function parseSafeInt(x){ const n = Number(x); return Number.isFinite(n) ? Math.floor(n) : NaN; }
+
+      // quick sanity: make sure newline join is escaped correctly
+      console.debug('join\n ok?', ['a','b'].join('\n') === 'a\nb');
+    });
+  </script>
+</body>
+</html>

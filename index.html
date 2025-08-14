@@ -49,22 +49,23 @@
       <h2>How it works (short version)</h2>
       <ol class="small">
         <li>We record the current tip height and wait for the <strong>next block</strong>.</li>
-        <li>When it arrives, we take its block hash, reverse byte order (LE→BE), and interpret it as a 256‑bit integer.</li>
-        <li>We map that integer into your chosen range using <em>rejection sampling</em> (prevents modulo bias).</li>
-        <li>For multiple numbers, we iteratively <code>SHA‑256</code> the previous 256‑bit value between draws.</li>
+        <li>When it arrives, we fetch its block hash (LE), reverse byte order to <strong>big-endian (BE)</strong>.</li>
+        <li>We derive entropy as <code>H<sub>0</sub> = SHA‑256(BE)</code> (32 bytes, hex).</li>
+        <li>We map <code>H<sub>i</sub></code> into your range using <em>rejection sampling</em>. If rejected, set <code>H<sub>i</sub> = SHA‑256(H<sub>i</sub>)</code> and retry. For multiple numbers, advance with <code>H<sub>i+1</sub> = SHA‑256(H<sub>i</sub>)</code>.</li>
       </ol>
 
       <h2>Copy verification recipe</h2>
       <p class="small">Use this generic recipe to verify any result. After a reveal, we also provide a one-click copy with the exact values used.</p>
       <textarea id="generic-recipe" class="mono" readonly>Verification recipe (generic):
-1. Get block height H and little-endian hash LE from an explorer (mempool.space or blockstream.info).
-2. Convert LE → BE by reversing byte order.
-3. Interpret BE as bigint X = int.from_bytes(BE, 'big').
-4. Let N = max - min + 1, M = 2**256, threshold = M - (M % N).
-5. If X >= threshold: X = SHA256(X) as 32 bytes big-endian and repeat step 5.
-6. result = min + (X % N).
-7. For multiple draws: after each result, set X = SHA256(X) and repeat step 4.
-</textarea>
+1) Get block height H and block hash LE from an explorer (mempool.space or blockstream.info).
+2) Convert LE → BE by reversing byte order (2 hex chars = 1 byte).
+3) Derive seed: H0 = SHA256(BE)  (hex, 32 bytes).
+4) For each draw i, let Xi = Hi at start of the iteration and do:
+   • N = max - min + 1; M = 2^256; threshold = M - (M % N).
+   • If int(Xi, 16) ≥ threshold: Xi = SHA256(Xi), repeat check.
+   • result[i] = min + (int(Xi, 16) % N).
+   • Set Hi+1 = SHA256(Xi) for the next draw.
+      </textarea>
       <div class="row" style="margin-top:8px;">
         <button id="copy-generic" class="btn-secondary">Copy generic recipe</button>
         <button id="goto-app">Go to generator →</button>
@@ -74,7 +75,7 @@
     <!-- App Page -->
     <section id="app" class="card hidden">
       <h1>Bitcoin Block RNG</h1>
-      <p class="muted">Enter how many numbers (max <strong>10</strong>) and a range. We’ll wait for the <strong>next Bitcoin block</strong> and map its hash to your range using unbiased rejection sampling. We use public explorers (no private node required).</p>
+      <p class="muted">Enter how many numbers (max <strong>10</strong>) and a range. We’ll wait for the <strong>next Bitcoin block</strong> and map its hash (via <code>H0 = SHA‑256(BE)</code>) to your range with unbiased rejection sampling. We use public explorers (no private node required).</p>
 
       <div class="grid">
         <div>
@@ -110,7 +111,7 @@
       <div id="out"></div>
 
       <footer>
-        <div>Verification: After reveal, we show the block height & hash and the exact mapping. Anyone can independently verify with any node or explorer.</div>
+        <div>Verification: After reveal, we show the block height & hash and the exact mapping (including <code>H0</code>). Anyone can independently verify with any node or explorer.</div>
         <div class="donation">
           <p>Enjoying the randomness? Help keep this project running with a Lightning tip:</p>
           <img id="donation-qr" src="" alt="Lightning Donation QR Code" />
@@ -212,21 +213,26 @@
       function leHexToBeHex(hex){ const clean = hex.trim(); const bytes = clean.match(/.{1,2}/g) || []; return bytes.reverse().join(''); }
       function bigIntFromHex(hex){ return BigInt('0x' + hex); }
       function mapToRange(uniform256, min, max){ const range = BigInt(max - min + 1); const modulus = 1n << 256n; const threshold = modulus - (modulus % range); const x = uniform256; if (x >= threshold) return null; const offset = x % range; return Number(BigInt(min) + offset); }
-      async function sha256Hex(hex){ const match = hex.match(/.{1,2}/g) || []; const buf = new Uint8Array(match.map(b => parseInt(b,16))); const digest = await crypto.subtle.digest('SHA-256', buf); return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+      async function sha256Hex(hex){ const match = hex.match(/.{1,2}/g) || []; const buf = new Uint8Array(match.map(b => parseInt(b,16))); const digest = await crypto.subtle.digest('SHA-256', buf); return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
 
+      // Draws derived from H0 = SHA256(BE(blockHashLE))
       async function drawsFromBlockHash(blockHashLE, count, min, max){
         const draws = [];
-        let be = leHexToBeHex(blockHashLE);
-        let x = bigIntFromHex(be);
+        const be0 = leHexToBeHex(blockHashLE);
+        let h = await sha256Hex(be0);           // H0
+        let x = bigIntFromHex(h);
         for (let i=0;i<count;i++){
           while (true){
             const val = mapToRange(x, min, max);
-            if (val !== null){ draws.push({ base16:'0x'+be, base10: bigIntFromHex(be).toString(10), value: val }); break; }
-            be = await sha256Hex(be); x = bigIntFromHex(be);
+            if (val !== null){
+              draws.push({ base16:'0x'+h, base10: bigIntFromHex(h).toString(10), value: val });
+              break;
+            }
+            h = await sha256Hex(h); x = bigIntFromHex(h);
           }
-          be = await sha256Hex(be); x = bigIntFromHex(be);
+          h = await sha256Hex(h); x = bigIntFromHex(h); // advance for next draw
         }
-        return draws;
+        return { draws, be0, h0: h }; // note: h here is H_{last+1}; we expose be0 and h0 below separately during render
       }
 
       // Meta polling (60s) with 1s UI ticker
@@ -268,8 +274,8 @@
           if (nextHeight === null) { toast('Stopped.', 'warn'); goBtn.disabled = false; stopBtn.disabled = true; waitingStartSec = null; main(); return; }
           const hash = (await prov.hashByHeight(nextHeight)).trim();
           const block = await prov.block(hash); setTipState(nextHeight, block.timestamp);
-          const draws = await drawsFromBlockHash(hash, count, min, max);
-          renderResult({height: nextHeight, hash, min, max, draws});
+          const { draws, be0, h0 } = await drawsFromBlockHash(hash, count, min, max);
+          renderResult({height: nextHeight, hash, min, max, draws, be0, h0});
           goBtn.disabled = false; stopBtn.disabled = true; waitController = null; waitingStartSec = null; main();
         }catch(e){ toast('Error: ' + e.message, 'err'); goBtn.disabled = false; stopBtn.disabled = true; waitController = null; waitingStartSec = null; main(); }
       });
@@ -287,12 +293,12 @@
         }
       }
 
-      function renderResult({height, hash, min, max, draws}){
+      function renderResult({height, hash, min, max, draws, be0, h0}){
         const short = (h)=> h.slice(0,10) + '…' + h.slice(-8);
         const items = draws.map((d,i)=>
           '<li>Draw ' + (i+1) + ': <strong class="mono">' + d.value + '</strong>' +
-          '<br><span class="small">entropy[' + i + '] base10:</span> <span class="mono small">' + d.base10 + '</span>' +
-          '<br><span class="small">entropy[' + i + '] hex:</span> <span class="mono small">' + d.base16 + '</span>' +
+          '<br><span class="small">H[' + i + '] base10:</span> <span class="mono small">' + d.base10 + '</span>' +
+          '<br><span class="small">H[' + i + '] hex:</span> <span class="mono small">' + d.base16 + '</span>' +
           '</li>'
         ).join('');
         const beList = draws.map(d=>d.base16).join('\n');
@@ -301,23 +307,27 @@
           'Verification (specific):\n' +
           'Block height: ' + height + '\n' +
           'Block hash (LE hex): ' + hash + '\n' +
-          'Entropy values (BE hex, per draw):\n' + beList + '\n' +
-          'Entropy values (base10, per draw):\n' + base10List + '\n' +
+          'BE (byte‑reversed LE): ' + be0 + '\n' +
+          'H0 = SHA256(BE): ' + (draws.length ? draws[0].base16 : 'n/a') + '  (first candidate)\n' +
+          'Per‑draw entropy H[i] (hex):\n' + beList + '\n' +
+          'Per‑draw entropy H[i] (base10):\n' + base10List + '\n' +
           'Range: [' + min + ', ' + max + ']\n' +
-          'Mapping: 2^256 space with rejection sampling to avoid bias. For each draw i:\n' +
-          '1) Take entropy[i] as 256-bit big-endian integer X.\n' +
-          '2) N = max - min + 1; M = 2^256; threshold = M - (M % N).\n' +
-          '3) If X >= threshold: X = SHA256(X) and repeat step 3.\n' +
-          '4) result[i] = min + (X % N).\n' +
-          '5) For multiple draws, between draws set X = SHA256(prev X).';
+          'Mapping: 2^256 space with rejection sampling to avoid modulo bias. For each draw i:\n' +
+          '  1) Xi = H[i] as 256‑bit big‑endian integer.\n' +
+          '  2) N = max - min + 1; M = 2^256; threshold = M - (M % N).\n' +
+          '  3) If Xi ≥ threshold: Xi = SHA256(Xi) and retry.\n' +
+          '  4) result[i] = min + (Xi % N).\n' +
+          '  5) For next draw, set H[i+1] = SHA256(Xi).';
         out.innerHTML =
           '<div class="result">' +
             '<div><strong>Range:</strong> <span class="mono">[' + min + ', ' + max + ']</span></div>' +
             '<div><strong>Block:</strong> <span class="mono">#' + height.toLocaleString() + '</span></div>' +
             '<div><strong>Hash (LE):</strong> <span class="mono" title="' + hash + '">' + short(hash) + '</span></div>' +
+            '<div><strong>BE:</strong> <span class="mono" title="' + be0 + '">' + short(be0) + '</span></div>' +
+            '<div><strong>H0 = SHA‑256(BE):</strong> <span class="mono" title="' + (draws.length ? draws[0].base16 : 'n/a') + '">' + (draws.length ? short(draws[0].base16) : 'n/a') + '</span></div>' +
             '<ol style="margin-top:8px;">' + items + '</ol>' +
             '<div class="row" style="margin-top:8px;"><button id="copy-specific" class="btn-secondary">Copy verification for this result</button></div>' +
-            '<div class="small" style="margin-top:8px;">Verification: Take the block hash (little‑endian from explorer), reverse to big‑endian, interpret as 256‑bit, then rejection‑sample into your range. Between draws, SHA‑256 the previous 256‑bit value.</div>' +
+            '<div class="small" style="margin-top:8px;">Verification: Take LE, reverse to BE, compute <code>H0 = SHA‑256(BE)</code>, then rejection‑sample into your range. Between draws (and on rejection), advance with <code>H = SHA‑256(H)</code>.</div>' +
           '</div>';
         qs('#copy-specific').addEventListener('click', async ()=>{
           try { await navigator.clipboard.writeText(recipe); statusEl.innerHTML = '<span class="small ok">Copied verification for this result.</span>'; }
@@ -325,7 +335,7 @@
         });
       }
 
-      function toast(t, cls='warn'){ statusEl.innerHTML = '<span class="small ' + cls + '\">' + t + '</span>'; }
+      function toast(t, cls='warn'){ statusEl.innerHTML = '<span class="small ' + cls + '">' + t + '</span>'; }
       function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
       function clampInt(x, lo, hi){ if(!Number.isFinite(x)) return lo; return Math.max(lo, Math.min(hi, x)); }
       function parseSafeInt(x){ const n = Number(x); return Number.isFinite(n) ? Math.floor(n) : NaN; }

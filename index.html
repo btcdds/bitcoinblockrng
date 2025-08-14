@@ -427,11 +427,11 @@ Mapping per draw:
 
 ${perDrawLines}`;
 
-        const kListHtml = '<ul class="small mono">' + committed.hashes.map((h,idx)=>`<li>H${idx+1} @ #${(committed.startHeight+idx).toLocaleString()}: ${short(h)}</li>`).join('') + '</ul>';
+        const kListHtml = '<ul class="small mono">' + committed.hashes.map((h,idx)=>`<li>H${idx+1} @ #${(committed.startHeight+idx).toLocaleString()}: ${h}</li>`).join('') + '</ul>';
         out.innerHTML =
           '<div class="result">'
           + `<div><strong>Committed:</strong> <span class="mono">start #${committed.startHeight.toLocaleString()}, K=${committed.K}, provider=${providerName}</span></div>`
-          + `<div><strong>H0 = SHA‑256(H1 || … || HK):</strong> <span class="mono" title="0x${h0}">${short('0x'+h0)}</span></div>`
+          + `<div><strong>H0 = SHA‑256(H1 || … || HK):</strong> <span class="mono">0x${h0}</span></div>`
           + `<div><strong>Block hashes (BE):</strong>${kListHtml}</div>`
           + `<div><strong>Range:</strong> <span class="mono">[${min}, ${max}]</span></div>`
           + `<ol style="margin-top:8px;">${items}</ol>`

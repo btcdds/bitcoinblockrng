@@ -31,6 +31,8 @@
     @media (min-width: 860px){ .two-col{ grid-template-columns:1fr 1fr; } }
     .card-lite{ border:1px solid var(--line); border-radius:10px; padding:12px; background:#0e0e0e; }
     .small{ font-size:12px; color:var(--muted); }
+    .donate{ text-align:center; margin-top:20px; }
+    .donate img{ max-width:180px; margin-top:10px; }
   </style>
 </head>
 <body>
@@ -101,6 +103,12 @@
         <span id="since" class="pill">Since last block: --</span>
       </div>
       <div id="status" class="muted" style="margin-top:8px;"></div>
+
+      <!-- Donation QR -->
+      <div class="donate">
+        <p>If you appreciate and use this site, consider sending some sats:</p>
+        <img src="lnurladdress.png" alt="Lightning Donation QR" />
+      </div>
     </section>
 
     <!-- Results Page -->
@@ -149,6 +157,12 @@
         <p class="muted">Your browser blocked 1‑click copy. Select and copy the text below manually (Ctrl/Cmd+C).</p>
         <textarea id="copyFallback" class="mono" readonly></textarea>
       </div>
+
+      <!-- Donation QR -->
+      <div class="donate">
+        <p>If you appreciate and use this site, consider sending some sats:</p>
+        <img src="lnurladdress.png" alt="Lightning Donation QR" />
+      </div>
     </section>
   </main>
 
@@ -157,19 +171,6 @@
     <p>Disclaimer: Do not use for high-stakes selections. No personal data is collected. Report issues at <a href="https://github.com/btcdds/bitcoinblockrng/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
   </footer>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', ()=>{
-      const gotoBtn = document.getElementById('gotoGenerator');
-      const landing = document.getElementById('landing');
-      const generator = document.getElementById('generator');
-      if(gotoBtn){
-        gotoBtn.addEventListener('click', ()=>{
-          landing.classList.add('hidden');
-          generator.classList.remove('hidden');
-        });
-      }
-    });
-  </script>
   <script src="app.js"></script>
 </body>
 </html>

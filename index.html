@@ -1,100 +1,72 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bitcoin Block RNG</title>
   <style>
-    :root { --radius: 16px; }
-    html, body { height: 100%; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif; margin: 0; background: #0b1320; color: #f2f5f9; }
-    .wrap { max-width: 960px; margin: 40px auto; padding: 0 16px; }
-    .card { background: #111a2b; border: 1px solid #1b2844; border-radius: var(--radius); box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 20px; }
-    h1 { margin: 0 0 6px; font-weight: 800; letter-spacing: .2px; }
-    h2 { margin: 14px 0 6px; font-weight: 800; letter-spacing: .2px; }
-    p.muted { color: #9fb0d3; margin-top: 6px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 16px; }
-    label { font-size: 12px; color: #9fb0d3; display:block; margin-bottom: 6px; }
-    input, select, textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a3a61; background: #0e172a; color: #e6edf7; font-size: 14px; }
-    textarea { min-height: 120px; }
-    button { padding: 12px 16px; border-radius: 999px; border: 0; background: #4f7cff; color: white; font-weight: 700; cursor: pointer; }
-    button[disabled] { opacity: .6; cursor: not-allowed; }
-    .row { display:flex; gap: 10px; align-items:center; flex-wrap: wrap; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .pill { background:#0e172a; border:1px solid #2a3a61; padding: 6px 10px; border-radius: 999px; }
-    .status { margin-top: 12px; display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
-    .result { margin-top: 18px; padding: 14px; background:#0e172a; border:1px solid #2a3a61; border-radius: 14px; }
-    .small { font-size: 12px; color: #9fb0d3; }
-    .ok { color: #96e6a1; }
-    .warn { color: #ffd479; }
-    .err { color: #ff8a8a; }
-    footer { margin: 28px 0; color:#88a0ca; font-size: 12px; }
-    a { color: #9ec4ff; text-decoration: none; }
-    .hidden { display:none; }
-    .btn-secondary { background: #24385f; }
-    pre { background:#0e172a; border:1px solid #2a3a61; border-radius: 12px; padding: 12px; overflow:auto; }
-    .donation { margin-top: 20px; text-align: center; }
-    .donation img { max-width: 200px; height: auto; display: block; margin: 10px auto; }
-    .donation p { font-size: 14px; color: #9fb0d3; }
+    :root { --bg:#121212; --card:#1e1e1e; --line:#2a2a2a; --fg:#f0f0f0; --muted:#c9c9c9; --accent:#2a82da; }
+    *{ box-sizing:border-box }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; background:var(--bg); color:var(--fg); }
+    header, footer{ background:var(--card); padding:16px; text-align:center; }
+    main{ padding:24px; }
+    .section{ margin:20px auto; max-width:980px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; }
+    h1,h2,h3,label,p{ color:var(--fg); }
+    p.muted, .muted{ color:var(--muted); }
+    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+    input, select, textarea{ width:100%; background:#0e0e0e; color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+    textarea{ min-height:96px; }
+    .button{ background:var(--accent); border:0; color:#fff; padding:10px 14px; border-radius:999px; cursor:pointer; font-weight:700; }
+    .button[disabled]{ opacity:.6; cursor:not-allowed; }
+    .pill{ background:#0e0e0e; border:1px solid var(--line); padding:6px 10px; border-radius:999px; font-size:12px; color:var(--muted); }
+    .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+    .nowrap{ white-space:nowrap; overflow:auto; display:block; }
+    .hash-line{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:nowrap; overflow:auto; margin:4px 0; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:#0e0e0e; }
+    .hidden{ display:none; }
+    a{ color:#9ec4ff; text-decoration:none; }
+    .ts-label{ display:flex; align-items:center; gap:8px; }
+    .ts-label input{ margin-left:8px; vertical-align:middle; }
+    .two-col{ display:grid; grid-template-columns:1fr; gap:14px; }
+    @media (min-width: 860px){ .two-col{ grid-template-columns:1fr 1fr; } }
+    .card-lite{ border:1px solid var(--line); border-radius:10px; padding:12px; background:#0e0e0e; }
+    .small{ font-size:12px; color:var(--muted); }
   </style>
 </head>
 <body>
-  <div class="wrap">
+  <header>
+    <h1>Bitcoin Block RNG</h1>
+  </header>
 
+  <main>
     <!-- Landing Page -->
-    <section id="landing" class="card">
-      <h1>Bitcoin Block RNG</h1>
-      <p class="muted">Provably-fair randomness derived from the <strong>next Bitcoin block(s)</strong>, using only public explorers. No servers or private nodes.</p>
-
-      <h2>How it works (short version)</h2>
-      <ol class="small">
-        <li>We record the current tip height and commit to <strong>the next K blocks</strong> (default K=1). Commitment is frozen at begin.</li>
-        <li>Each committed block's <strong>hash</strong> (as displayed by your provider, big-endian) is collected when mined.</li>
-        <li>We derive entropy as <code>H<sub>0</sub> = SHA‑256(H<sub>1</sub> || H<sub>2</sub> || … || H<sub>K</sub>)</code> (concat as bytes, then SHA‑256).</li>
-        <li>We map <code>H</code> into your range using <em>rejection sampling</em>. On rejection or between draws, advance with <code>H = SHA‑256(H)</code>.</li>
-      </ol>
-      <p class="small">Note: If a different provider returns hashes in little‑endian (LE), reverse the bytes first. The default providers (mempool.space, blockstream.info) return big‑endian (BE).</p>
-
-      <h2>Copy verification recipe</h2>
-      <p class="small">Use this generic recipe to verify any result. After a reveal, the one‑click copy includes the exact values.</p>
-      <textarea id="generic-recipe" class="mono" readonly>Verification recipe (generic):
-1) Get committed start height Hstart and K (number of blocks).
-2) For i = 0..K-1, fetch block hash for height Hstart + i from your provider (BE). If your provider returns LE, reverse to BE.
-3) Concatenate the K 32-byte hashes as raw bytes: S = H1 || H2 || ... || HK.
-4) Derive seed: H0 = SHA256(S)  (hex, 32 bytes).
-5) For each draw j:
-   • N = max - min + 1; M = 2^256; threshold = M - (M % N).
-   • Let X = int(H, 16). If X ≥ threshold: H = SHA256(H) and repeat.
-   • result[j] = min + (X % N).
-   • Set H = SHA256(H) once to advance to next draw.
-      </textarea>
-      <div class="row" style="margin-top:8px;">
-        <button id="copy-generic" class="btn-secondary">Copy generic recipe</button>
-        <button id="goto-app">Go to generator →</button>
-      </div>
+    <section id="landing" class="section">
+      <h2>Welcome</h2>
+      <p class="muted">Generate random numbers from Bitcoin block hashes. The process is transparent and publicly verifiable.</p>
+      <button class="button" id="gotoGenerator">Go to Random Number Generator</button>
     </section>
 
-    <!-- App Page -->
-    <section id="app" class="card hidden">
-      <h1>Bitcoin Block RNG</h1>
-      <p class="muted">Choose how many numbers (max <strong>10</strong>), a range, and <strong>K</strong> consecutive blocks (max <strong>5</strong>) to commit for entropy. We freeze the commitment on begin.</p>
+    <!-- Generator Page -->
+    <section id="generator" class="section hidden">
+      <h2>Random Number Generator</h2>
+      <p class="muted">Choose how many random numbers (max <strong>10</strong>), a range, and consecutive blocks (max <strong>5</strong>).</p>
 
-      <div class="grid">
+      <div class="grid" style="margin-top:8px;">
         <div>
-          <label for="count">How many numbers? <span class="small">(max 10)</span></label>
-          <input id="count" type="number" min="1" max="10" value="1" />
+          <label for="count">How many random numbers</label>
+          <input type="number" id="count" min="1" max="10" value="1" />
         </div>
         <div>
-          <label for="min">Min</label>
-          <input id="min" type="number" value="1" />
+          <label for="min">Minimum</label>
+          <input type="number" id="min" value="1" />
         </div>
         <div>
-          <label for="max">Max <span class="small">(≤ 1e12)</span></label>
-          <input id="max" type="number" value="100" />
+          <label for="max">Maximum (≤ 1e12)</label>
+          <input type="number" id="max" value="100" />
         </div>
         <div>
-          <label for="kblocks">K blocks (entropy): <span class="small">(1–5)</span></label>
-          <input id="kblocks" type="number" min="1" max="5" value="1" />
+          <label for="kblocks">Consecutive blocks (K)</label>
+          <input type="number" id="kblocks" min="1" max="5" value="1" />
         </div>
         <div>
           <label for="provider">Data provider</label>
@@ -105,391 +77,86 @@
         </div>
       </div>
 
-      <div class="small" style="margin-top:8px;">Risk note: Larger K raises the cost of miner manipulation but increases waiting time (~10 min per block).</div>
-
-      <div class="row" style="margin-top: 12px;">
-        <button id="go">Begin</button>
-        <button id="stop" class="btn-secondary" disabled>Stop</button>
-        <span id="commit" class="pill small hidden"></span>
-        <span id="tip" class="pill small">Tip: --</span>
-        <span id="eta" class="pill small">ETA: --</span>
-        <span id="since" class="pill small">Since last block: --</span>
+      <!-- Public timestamp area (height-based) -->
+      <div class="row" style="margin-top:12px; align-items:center;">
+        <label class="ts-label">Would you like a public timestamp on Nostr?
+          <input id="use-commit" type="checkbox" />
+        </label>
+        <button id="copy-commit" class="button hidden" type="button">Copy Commit String</button>
+        <input id="commit-string" class="mono hidden" style="flex:1 1 360px;" readonly placeholder="Commit string will appear here after first Begin (commit phase)" />
+        <span id="nostr-links" class="small hidden" style="gap:10px; display:none; align-items:center;">
+          <a id="open-snort" href="https://snort.social" target="_blank" rel="noopener">Open Snort</a>
+          <span>•</span>
+          <a id="search-nostrband" href="#" target="_blank" rel="noopener">Search Nostr.Band</a>
+        </span>
       </div>
+      <div class="muted" id="commit-hint" style="margin-top:4px; display:none;"></div>
 
-      <div id="status" class="status small"></div>
-      <div id="out"></div>
-
-      <footer>
-        <div>Verification: After reveal, we show the committed start height, K, provider, the K block hashes, <code>H0</code>, and the exact mapping. Anyone can verify using any explorer.</div>
-        <div class="donation">
-          <p>Enjoying the randomness? Help keep this project running with a Lightning tip:</p>
-          <img id="donation-qr" src="" alt="Lightning Donation QR Code" />
-        </div>
-      </footer>
+      <!-- Begin / Status line -->
+      <div class="row" style="margin-top:14px;">
+        <button id="begin" class="button" type="button">Begin</button>
+        <button id="stop" class="button" type="button" disabled>Stop</button>
+        <span id="tip" class="pill">Tip: --</span>
+        <span id="eta" class="pill">ETA: --</span>
+        <span id="since" class="pill">Since last block: --</span>
+      </div>
+      <div id="status" class="muted" style="margin-top:8px;"></div>
     </section>
 
-    <!-- Site-wide Footer (visible on landing and app pages) -->
-    <footer class="card" style="margin-top:16px;">
-      <div class="small">
-        <div style="margin-bottom:8px;">
-          <strong>Contact:</strong>
-          <a href="https://snort.social/p/npub1nngtlkep7spektt3dtwa0us0ja2tu20xx4x7jv5qxzjcxgjch00qmmlw5k" target="_blank" rel="noopener">Nostr (npub)</a>
-          &nbsp;•&nbsp;
-          <a href="https://github.com/btcdds/bitcoinblockrng/issues" target="_blank" rel="noopener">GitHub Issues</a>
+    <!-- Results Page -->
+    <section id="results" class="section hidden">
+      <h2>Results</h2>
+      <div id="committedInfo" class="muted" style="margin-bottom:8px;"></div>
+      <div id="hashes"></div>
+      <div id="numbers" style="margin-top:8px;"></div>
+
+      <h3 style="margin-top:14px;">Verification</h3>
+      <div class="two-col">
+        <!-- Column A: Share your proof -->
+        <div class="card-lite">
+          <h4 style="margin:0 0 8px;">Share your proof</h4>
+          <p class="muted" style="margin:0 0 10px;">Optional: paste your Nostr note URL so it’s included in the copied proof.</p>
+          <div class="row" style="align-items:flex-end; gap:8px;">
+            <div style="flex:1 1 320px;">
+              <label class="muted" for="note-url">Nostr note URL (optional)</label>
+              <input id="note-url" type="url" placeholder="https://snort.social/e/… or https://nostr.band/…" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px; gap:8px;">
+            <button id="copyShort" class="button" type="button">Copy Short Proof</button>
+            <button id="copyLong" class="button" type="button">Copy Long Proof</button>
+          </div>
+          <p class="muted" style="margin:8px 0 0;">Short proof is social‑friendly (≈140 chars). Long proof is fully self‑contained.</p>
         </div>
-        <div style="margin-bottom:8px;">
-          <strong>Disclaimer:</strong> Do not use this site for high‑stakes selections without understanding the risks of miner manipulation. For stronger guarantees, increase K (more consecutive blocks) or combine with an external randomness beacon.
+
+        <!-- Column B: Verify a short proof -->
+        <div class="card-lite">
+          <h4 style="margin:0 0 8px;">Verify a short proof</h4>
+          <p class="muted" style="margin:0 0 10px;">Paste a short proof to check formatting & CRC integrity.</p>
+          <div class="row" style="align-items:flex-end; gap:8px;">
+            <div style="flex:1 1 320px;">
+              <label class="muted" for="verifyShortBox">Short proof</label>
+              <input id="verifyShortBox" type="text" placeholder="BBRNG v1|p=mp|t=…|s=…|k=…|r=min-max|n=N|x=[…]|crc=…" />
+            </div>
+            <button id="verifyBtn" class="button" type="button">Verify</button>
+          </div>
+          <div id="verifyStatus" class="muted" style="margin-top:6px;"></div>
         </div>
-        <div style="margin-bottom:8px;">
-          <strong>Privacy:</strong> This site does not collect, store, or track personal data. All randomness is derived from public Bitcoin block data.
-        </div>
-        <div style="margin-bottom:8px;">
-          <strong>Attribution:</strong> Block data retrieved from public APIs (mempool.space, blockstream.info).
-        </div>
-        <div>© 2025 bitcoinblockrng.com — All rights reserved.</div>
       </div>
-    </footer>
+      <!-- Fallback copy area (shown only if clipboard API fails) -->
+      <div id="copyFallbackWrap" class="section hidden" style="max-width:980px;">
+        <h3>Manual copy</h3>
+        <p class="muted">Your browser blocked 1‑click copy. Select and copy the text below manually (Ctrl/Cmd+C).</p>
+        <textarea id="copyFallback" class="mono" readonly></textarea>
+      </div>
+    </section>
+  </main>
 
-  </div>
+  <footer>
+    <p>© 2025 Bitcoin Block RNG | Contact: <a href="https://snort.social/p/npub177wsn56w3dzvmkut9v0vt9larwckmctuvyvmx8qvqd2ywa6hup7svt2042" target="_blank" rel="noopener">Nostr (npub)</a></p>
+    <p>Disclaimer: Do not use for high-stakes selections. No personal data is collected. Report issues at <a href="https://github.com/btcdds/bitcoinblockrng/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
+  </footer>
 
-  <script>
-    'use strict';
-    document.addEventListener('DOMContentLoaded', () => {
-      const qs = (s)=>document.querySelector(s);
-      const landing = qs('#landing');
-      const appPage = qs('#app');
-      const goBtn = qs('#go');
-      const stopBtn = qs('#stop');
-      const out = qs('#out');
-      const statusEl = qs('#status');
-      const etaEl = qs('#eta');
-      const sinceEl = qs('#since');
-      const tipEl = qs('#tip');
-      const commitEl = qs('#commit');
-      const providerSel = qs('#provider');
-      const qrImg = qs('#donation-qr');
-
-      // --- Local state ---
-      let lastTipHeight = null;           // number
-      let lastTipTimestampSec = null;     // unix seconds
-      let waitingStartSec = null;         // unix seconds when waiting begins
-      let metaTimer = null;               // 60s provider metadata
-      let uiTicker = null;                // 1s UI ticker
-
-      // Commitment state (frozen across stops until fulfilled)
-      let committed = null; // { startHeight, K, providerName, hashes: [], done }
-
-      function fmtDuration(s){ const m = Math.floor(s/60), r = s%60; return m<=0 ? r + 's' : m + 'm ' + r + 's'; }
-      function formatEtaForK(sinceSec, remainingK){
-        // Per request: ETA ≈ (remainingK * 10 minutes) − time since last block
-        // Use 600s as the average per block. If negative, show Overdue by ...
-        const blocksLeft = Math.max(0, Number(remainingK) || 0);
-        if (blocksLeft === 0) return '--';
-        const target = blocksLeft * 600; // seconds
-        const diff = target - Math.max(0, Number(sinceSec) || 0);
-        if (diff <= 0) return 'Overdue by ' + fmtDuration(-diff);
-        return fmtDuration(diff);
-      }
-
-      function startUiTicker(){
-        if (uiTicker) return;
-        uiTicker = setInterval(()=>{
-          if (typeof lastTipTimestampSec === 'number'){
-            const nowSec = Math.floor(Date.now()/1000);
-            const since = Math.max(0, nowSec - lastTipTimestampSec);
-            sinceEl.textContent = 'Since last block: ' + fmtDuration(since);
-            const remaining = (committed && !committed.done)
-              ? committed.hashes.reduce((n,h)=> n + (h ? 0 : 1), 0)
-              : 0;
-            etaEl.textContent = remaining > 0
-              ? ('ETA: ' + formatEtaForK(since, remaining))
-              : 'ETA: --';
-          }
-          if (typeof waitingStartSec === 'number'){
-            const nowSec = Math.floor(Date.now()/1000);
-            const elapsed = Math.max(0, nowSec - waitingStartSec);
-            statusEl.innerHTML = `<span class="pill small">Waiting… elapsed ${fmtDuration(elapsed)}</span>`;
-          }
-        }, 1000);
-      }
-
-      function setTipState(height, timestampSec){
-        const nowSec = Math.floor(Date.now()/1000);
-        lastTipHeight = Number(height);
-        lastTipTimestampSec = Math.min(Number(timestampSec)||0, nowSec);
-        tipEl.textContent = 'Tip: #' + lastTipHeight.toLocaleString();
-      }
-
-      // Navigation
-      qs('#goto-app').addEventListener('click', ()=>{ landing.classList.add('hidden'); appPage.classList.remove('hidden'); });
-      qs('#copy-generic').addEventListener('click', async ()=>{
-        const t = qs('#generic-recipe');
-        const text = t.value;
-        try { if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text); else { t.select(); t.setSelectionRange(0, text.length); document.execCommand('copy'); } statusEl.innerHTML = '<span class="small ok">Copied generic verification recipe.</span>'; }
-        catch (e) { statusEl.innerHTML = '<span class="small err">Copy failed: ' + e.message + '</span>'; }
-      });
-
-      // QR loader (no upload)
-      (function loadQR(){
-        const candidates = ['lnurladdress.png','./lnurladdress.png','/lnurladdress.png','/mnt/data/lnurladdress.png'];
-        let idx = 0; const tryNext = () => { if (!qrImg) return; if (idx >= candidates.length) { qrImg.classList.add('hidden'); return; } const url = candidates[idx++]; qrImg.onerror = tryNext; qrImg.src = url; }; tryNext();
-      })();
-
-      // Providers
-      const providers = {
-        mempool: {
-          tipHeight: async ()=> fetchText('https://mempool.space/api/blocks/tip/height'),
-          hashByHeight: async (h)=> fetchText('https://mempool.space/api/block-height/' + h),
-          block: async (hash)=> fetchJson('https://mempool.space/api/block/' + hash),
-        },
-        blockstream: {
-          tipHeight: async ()=> fetchText('https://blockstream.info/api/blocks/tip/height'),
-          hashByHeight: async (h)=> fetchText('https://blockstream.info/api/block-height/' + h),
-          block: async (hash)=> fetchJson('https://blockstream.info/api/block/' + hash),
-        }
-      };
-      async function fetchJson(url){ const r = await fetch(url, { cache:'no-store' }); if(!r.ok) throw new Error(url+': HTTP '+r.status); return r.json(); }
-      async function fetchText(url){ const r = await fetch(url, { cache:'no-store' }); if(!r.ok) throw new Error(url+': HTTP '+r.status); return r.text(); }
-
-      // Hash helpers
-      function bigIntFromHex(hex){ return BigInt('0x' + hex); }
-      function mapToRange(uniform256, min, max){ const range = BigInt(max - min + 1); const modulus = 1n << 256n; const threshold = modulus - (modulus % range); const x = uniform256; if (x >= threshold) return null; const offset = x % range; return { value: Number(BigInt(min) + offset) }; }
-      async function sha256Bytes(bytes){ const digest = await crypto.subtle.digest('SHA-256', bytes); return new Uint8Array(digest); }
-      function hexToBytes(hex){ const m = hex.match(/.{1,2}/g) || []; return new Uint8Array(m.map(b=>parseInt(b,16))); }
-      function bytesToHex(bytes){ return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(''); }
-
-      async function deriveSeedFromHashesBE(hashes){ // hashes: array of BE hex strings (64 hex chars)
-        const parts = hashes.map(h=>hexToBytes(h.trim()));
-        const totalLen = parts.reduce((a,b)=>a+b.length,0);
-        const concat = new Uint8Array(totalLen);
-        let o=0; for (const p of parts){ concat.set(p, o); o+=p.length; }
-        const h0bytes = await sha256Bytes(concat);
-        return bytesToHex(h0bytes); // hex
-      }
-
-      // Draws derived from K blocks -> H0 seed
-      async function drawsFromKBlocks(hashesBE, count, min, max){
-        const draws = [];
-        const h0 = await deriveSeedFromHashesBE(hashesBE);
-        let h = h0; let x = bigIntFromHex(h);
-        for (let i=0;i<count;i++){
-          let rejections = 0;
-          while (true){
-            const mapped = mapToRange(x, min, max);
-            if (mapped !== null){
-              draws.push({ base16: '0x'+h, base10: bigIntFromHex(h).toString(10), value: mapped.value, rejections });
-              break;
-            }
-            h = bytesToHex(await sha256Bytes(hexToBytes(h))); x = bigIntFromHex(h); rejections++;
-          }
-          h = bytesToHex(await sha256Bytes(hexToBytes(h))); x = bigIntFromHex(h); // advance for next draw
-        }
-        return { draws, h0 };
-      }
-
-      // Meta polling (60s) with 1s UI ticker
-      async function updateTipMeta(){
-        const prov = providers[providerSel.value];
-        try{
-          const hRaw = await prov.tipHeight();
-          const tipH = typeof hRaw === 'string' ? parseInt(hRaw,10) : hRaw;
-          const lastHash = await prov.hashByHeight(tipH);
-          const b = await prov.block(lastHash.trim());
-          setTipState(tipH, b.timestamp);
-        }catch(e){ /* keep last state */ }
-      }
-      async function main(){ await updateTipMeta(); clearInterval(metaTimer); metaTimer = setInterval(updateTipMeta, 60000); startUiTicker(); }
-      main();
-
-      // Begin / Stop
-      let waitController = null;
-      goBtn.addEventListener('click', async ()=>{
-        const count = clampInt(parseInt(qs('#count').value,10), 1, 10);
-        const min = parseSafeInt(qs('#min').value);
-        const max = parseSafeInt(qs('#max').value);
-        const K = clampInt(parseInt(qs('#kblocks').value,10), 1, 5);
-        const providerName = providerSel.value;
-        if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) { toast('Invalid range (max >= min).', 'err'); return; }
-        if ((max - min) > 1e12) { toast('Range too large (max-min ≤ 1e12).', 'warn'); return; }
-        if (min < Number.MIN_SAFE_INTEGER || max > Number.MAX_SAFE_INTEGER) { toast('Range must stay within JS safe integers.', 'warn'); return; }
-
-        // If already committed and not done, reuse the same commitment
-        if (!committed || committed.done){
-          // create a new commitment from current tip
-          const prov = providers[providerName];
-          try{
-            const hRaw = await prov.tipHeight();
-            const tipH = typeof hRaw === 'string' ? parseInt(hRaw,10) : hRaw;
-            committed = { startHeight: tipH+1, K, providerName, hashes: new Array(K).fill(null), done: false };
-            commitEl.textContent = `Commitment: start #${(tipH+1).toLocaleString()} for K=${K} on ${providerName}`;
-            commitEl.classList.remove('hidden');
-            // Anchor the ETA clock to the latest tip block timestamp right now
-            try {
-              const tipHashNow = await prov.hashByHeight(tipH);
-              const tipBlockNow = await prov.block(tipHashNow.trim());
-              setTipState(tipH, tipBlockNow.timestamp);
-            } catch(_) {}
-          }catch(e){ toast('Failed to commit: '+e.message, 'err'); return; }
-        }
-
-        out.innerHTML = '';
-        statusEl.textContent = '';
-        goBtn.disabled = true; stopBtn.disabled = false; waitController = { cancelled: false };
-        try{
-          clearInterval(metaTimer); // pause provider polling while waiting
-          waitingStartSec = Math.floor(Date.now()/1000);
-          await waitForCommittedBlocks(waitController);
-          if (waitController.cancelled){ toast('Stopped.', 'warn'); goBtn.disabled = false; stopBtn.disabled = true; waitingStartSec = null; main(); return; }
-
-          // We have K hashes in committed.hashes (BE)
-          const { draws, h0 } = await drawsFromKBlocks(committed.hashes, count, min, max);
-          const latestHeight = committed.startHeight + committed.K - 1;
-          const prov = providers[committed.providerName];
-          const lastHash = await prov.hashByHeight(latestHeight);
-          const b = await prov.block(lastHash.trim());
-          setTipState(latestHeight, b.timestamp);
-
-          renderResult({
-            committed,
-            min, max, draws,
-            providerName: committed.providerName,
-            h0
-          });
-
-          goBtn.disabled = false; stopBtn.disabled = true; waitController = null; waitingStartSec = null; committed.done = true; main();
-        }catch(e){ toast('Error: ' + e.message, 'err'); goBtn.disabled = false; stopBtn.disabled = true; waitController = null; waitingStartSec = null; main(); }
-      });
-      stopBtn.addEventListener('click', ()=>{ if (waitController) { waitController.cancelled = true; toast('Stopped waiting for committed blocks.', 'warn'); waitingStartSec = null; } });
-
-      async function waitForCommittedBlocks(controller){
-        const prov = providers[committed.providerName];
-        const targetEnd = committed.startHeight + committed.K - 1;
-        // Pre-fill any already-mined hashes if user re-begins later
-        for (let h = committed.startHeight; h <= targetEnd; h++){
-          if (!committed.hashes[h - committed.startHeight]){
-            try {
-              const tipRaw = await prov.tipHeight();
-              const tip = typeof tipRaw === 'string' ? parseInt(tipRaw,10) : tipRaw;
-              if (tip >= h){
-                const hash = (await prov.hashByHeight(h)).trim();
-                committed.hashes[h - committed.startHeight] = hash; // BE
-                try { const b = await prov.block(hash); setTipState(h, b.timestamp); } catch(_) {}
-              }
-            } catch(_) {}
-          }
-        }
-        while (true){
-          if (controller?.cancelled) return;
-          // check if we have all K
-          let missing = [];
-          for (let i=0;i<committed.K;i++) if (!committed.hashes[i]) missing.push(committed.startHeight + i);
-          if (missing.length === 0) return; // done
-          await sleep(10000);
-          try{
-            const tipRaw = await prov.tipHeight();
-            const tip = typeof tipRaw === 'string' ? parseInt(tipRaw,10) : tipRaw;
-            for (const h of missing){
-              if (tip >= h){
-                const hash = (await prov.hashByHeight(h)).trim();
-                committed.hashes[h - committed.startHeight] = hash;
-                try { const b = await prov.block(hash); setTipState(h, b.timestamp); } catch(_) {}
-              }
-            }
-          }catch(_){ /* ignore transient */ }
-        }
-      }
-
-      function renderResult({committed, min, max, draws, providerName, h0}){
-        const short = (h)=> h.slice(0,10) + '…' + h.slice(-8);
-        const items = draws.map((d,i)=>
-          `<li>Draw ${i+1}: <strong class="mono">${d.value}</strong><br>`+
-          `<span class="small">H[${i}] (hex accepted):</span> <span class="mono small">${d.base16}</span><br>`+
-          `<span class="small">H[${i}] (dec accepted):</span> <span class="mono small">${d.base10}</span><br>`+
-          `<span class="small">Rejections before accept:</span> <span class="mono small">${d.rejections}</span></li>`
-        ).join('');
-
-        const perDrawLines = draws.map((d,i)=>{
-          const hexNo0x = d.base16.startsWith('0x') ? d.base16.slice(2) : d.base16;
-          const N = BigInt(max - min + 1);
-          const D = BigInt('0x' + hexNo0x);
-          const r = D % N;
-          const finalNum = Number(r) + min;
-          return [
-            `Draw ${i+1}:`,
-            `  • H[${i}] (hex accepted) = ${d.base16}`,
-            `  • H[${i}] (dec accepted) = ${d.base10}`,
-            `  • Rejections before accept = ${d.rejections}`,
-            `  • N = (max - min + 1) = (${max} - ${min} + 1) = ${N.toString()}`,
-            `  • r = int(H[${i}],16) % N = ${r.toString()}`,
-            `  • Final = min + r = ${min} + ${r.toString()} = ${finalNum}`,
-          ].join('\n');
-        }).join('\n');
-
-        const kHashesList = committed.hashes.map((h,idx)=>`  • H${idx+1} (BE) @ height ${(committed.startHeight + idx).toLocaleString()}: ${h}`).join('\n');
-
-        const recipe = `VERIFY THESE RESULTS (easy mode)
-================================
-Commitment:
-  • Provider: ${providerName}
-  • Start height: ${committed.startHeight}
-  • K blocks: ${committed.K}
-
-Block hashes (BE):
-${kHashesList}
-
-Seed derivation:
-  • H0 = SHA-256(H1 || H2 || ... || HK)
-  • H0 (hex): 0x${h0}
-
-Your range: [${min}, ${max}]  ⇒  N = ${BigInt(max - min + 1).toString()}
-Mapping per draw:
-  • threshold = 2^256 - (2^256 mod N)
-  • If int(H,16) ≥ threshold ⇒ H = SHA-256(H) and retry
-  • After accept ⇒ result = min + (int(H,16) % N); then advance H = SHA-256(H)
-
-${perDrawLines}`;
-
-        const kListHtml = '<ul class="small mono">' + committed.hashes.map((h,idx)=>`<li>H${idx+1} @ #${(committed.startHeight+idx).toLocaleString()}: ${h}</li>`).join('') + '</ul>';
-        out.innerHTML =
-          '<div class="result">'
-          + `<div><strong>Committed:</strong> <span class="mono">start #${committed.startHeight.toLocaleString()}, K=${committed.K}, provider=${providerName}</span></div>`
-          + `<div><strong>H0 = SHA‑256(H1 || … || HK):</strong> <span class="mono">0x${h0}</span></div>`
-          + `<div><strong>Block hashes (BE):</strong>${kListHtml}</div>`
-          + `<div><strong>Range:</strong> <span class="mono">[${min}, ${max}]</span></div>`
-          + `<ol style="margin-top:8px;">${items}</ol>`
-          + '<div class="row" style="margin-top:8px;"><button id="copy-specific" class="btn-secondary">Copy step-by-step verification</button></div>'
-          + '<div class="small" style="margin-top:8px;">Verification: Use BE hashes from your provider (if LE, reverse first), compute <code>H0 = SHA‑256(H1 || … || HK)</code>, then apply unbiased rejection sampling and <code>H = SHA‑256(H)</code> between draws.</div>'
-          + '</div>';
-
-        qs('#copy-specific').addEventListener('click', async ()=>{
-          try { await navigator.clipboard.writeText(recipe); statusEl.innerHTML = '<span class="small ok">Copied step-by-step verification.</span>'; }
-          catch (e) { statusEl.innerHTML = '<span class="small err">Copy failed: ' + e.message + '</span>'; }
-        });
-      }
-
-      function toast(t, cls='warn'){ statusEl.innerHTML = '<span class="small ' + cls + '">' + t + '</span>'; }
-      function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-      function clampInt(x, lo, hi){ if(!Number.isFinite(x)) return lo; return Math.max(lo, Math.min(hi, x)); }
-      function parseSafeInt(x){ const n = Number(x); return Number.isFinite(n) ? Math.floor(n) : NaN; }
-
-      // Boot
-      (async function(){ await updateTipMeta(); setInterval(updateTipMeta, 60000); startUiTicker(); })();
-
-      // --- Console self-tests (optional) ---
-      // Call window.__rngSelfTest() in the console to run light checks
-      window.__rngSelfTest = async function(){
-        // Deterministic sample with fake hashes (32-byte zeros and ones) to validate concatenation + SHA-256 length
-        const fakeHashes = [
-          '0000000000000000000000000000000000000000000000000000000000000000',
-          'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-        ];
-        const h0 = await deriveSeedFromHashesBE(fakeHashes);
-        console.log('H0 length (hex) should be 64:', h0.length);
-        const { draws } = await drawsFromKBlocks(fakeHashes, 3, 1, 10);
-        console.log('3 draws in [1,10]:', draws.map(d=>d.value));
-        return { h0, draws };
-      };
-    });
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>

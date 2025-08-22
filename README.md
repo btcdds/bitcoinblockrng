@@ -1,43 +1,45 @@
-Bitcoin Block RNG
-What This Project Does
+# Bitcoin Block RNG
 
-Bitcoin Block RNG is a website that uses the hash of newly mined Bitcoin blocks to generate random numbers.
-Because Bitcoin block's final hash can’t be predicted in advance, this method provides transparent and publicly verifiable randomness.
+Welcome! This project is a simple, transparent way to generate random numbers using the Bitcoin blockchain.
 
-How It Works (Simple Version)
+## Why use Bitcoin blocks for randomness?
 
-You tell the site how many random numbers you want, and the range (like 1–100).
+Bitcoin blocks are created roughly every 10 minutes, and each block includes a unique cryptographic hash. That hash is unpredictable ahead of time and can be verified by anyone after it is published. This makes it a solid source of randomness that doesn’t rely on trusting a single website, company, or person.
 
-You choose whether to use 1 block or several consecutive blocks (up to 5) for more randomness.
+By using block hashes, you get:
+- **Transparency** – Everyone can see the block hash directly from the Bitcoin network.
+- **Fairness** – Nobody can know the result before the block is mined.
+- **Verifiability** – Anyone can double‑check the process and confirm the random number was generated honestly.
 
-The site waits until the next block(s) are mined.
+## How to use the site
 
-It takes the block hash (a long string of letters and numbers) and converts it into your random number(s).
+1. **Start at the landing page** – You’ll see a short explanation and a button to go to the generator.
+2. **Set your options** – Choose:
+   - How many random numbers you want (up to 10).
+   - The range (for example, 1–100).
+   - How many consecutive blocks to wait for (up to 5). Using more blocks adds more randomness, but it takes longer.
+   - Which blockchain data provider to use (mempool.space or blockstream.info).
+3. **(Optional) Public timestamp** – You can choose to publish a commitment on Nostr before the block is mined. This proves you didn’t change your selection after seeing the results.
+4. **Begin** – Click the Begin button. The site will wait for the next block (or blocks, if you selected more than one). You’ll see an estimated time and how long it has been since the last block.
+5. **See your results** – Once the block(s) are mined, the site shows:
+   - The block hashes used
+   - The random numbers generated
+   - A short proof (easy to share on social media)
+   - A long proof (complete details)
+6. **Verify** – Anyone can paste a short proof back into the site and check that it is valid.
 
-You get the result along with the block hash so anyone can verify it.
+## Things to keep in mind
 
-Why Use Bitcoin for Randomness?
+- **Not for high‑stakes use** – While block hashes are unpredictable, miners technically have a small ability to withhold blocks. For casual use like games, raffles, or fun random picks, it’s excellent. But don’t use this to decide something like million‑dollar lotteries or secure cryptography.
+- **Delays happen** – Sometimes blocks come quickly, other times they take longer. Expect around 10 minutes per block on average.
+- **No personal data** – The site doesn’t track you or collect private information.
 
-Transparent – The block hash is public information on the Bitcoin blockchain.
+## Supporting the project
 
-Verifiable – Anyone can check the result using the hash and the formula shown on the site.
+If you enjoy the site and want to support it, you can send a small Lightning tip by scanning the QR code on the generator or results page. Even a few sats are appreciated!
 
-Not Controlled by Us – The randomness comes from the Bitcoin network, not from our own server.
+## Questions or issues
 
-Limitations & Risks
+- Contact: [Nostr npub](https://snort.social/p/npub177wsn56w3dzvmkut9v0vt9larwckmctuvyvmx8qvqd2ywa6hup7svt2042)
+- Report issues: [GitHub Issues](https://github.com/btcdds/bitcoinblockrng/issues)
 
-Miner Influence – A Bitcoin miner could technically choose to withhold or modify a block to influence the number.
-
-For 1 block, the cost to manipulate is the coinbase payout, plus transaction fees of that block.
-
-Using more blocks (K > 1) makes manipulation harder and more expensive, but also increases waiting time.
-
-Time Delay – Blocks are mined about every 10 minutes on average. If you select more than 1 block, the wait is longer.
-
-Recommendations
-
-For casual use, 1 block is usually fine.
-
-For high-stakes randomness, choose more blocks (K=3–5) to reduce the risk of manipulation.
-
-Always verify the result using the block hash and the steps provided on the site.

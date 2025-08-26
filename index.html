@@ -43,81 +43,44 @@
   <main>
     <!-- Landing Page -->
     <section id="landing" class="section">
-<!DOCTYPE html>
-
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Bitcoin Block RNG</title>
-  <style>
-    :root { --bg:#121212; --card:#1e1e1e; --line:#2a2a2a; --fg:#f0f0f0; --muted:#c9c9c9; --accent:#2a82da; }
-    *{ box-sizing:border-box }
-    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; background:var(--bg); color:var(--fg); }
-    header, footer{ background:var(--card); padding:16px; text-align:center; }
-    main{ padding:24px; }
-    .section{ margin:20px auto; max-width:980px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; }
-    h1,h2,h3,label,p{ color:var(--fg); }
-    p.muted, .muted{ color:var(--muted); }
-    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
-    input, select, textarea{ width:100%; background:#0e0e0e; color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
-    textarea{ min-height:96px; }
-    .button{ background:var(--accent); border:0; color:#fff; padding:10px 14px; border-radius:999px; cursor:pointer; font-weight:700; }
-    .button[disabled]{ opacity:.6; cursor:not-allowed; }
-    .pill{ background:#0e0e0e; border:1px solid var(--line); padding:6px 10px; border-radius:999px; font-size:12px; color:var(--muted); }
-    .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-    .nowrap{ white-space:nowrap; overflow:auto; display:block; }
-    .hash-line{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:nowrap; overflow:auto; margin:4px 0; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:#0e0e0e; }
-    .hidden{ display:none; }
-    a{ color:#9ec4ff; text-decoration:none; }
-    .ts-label{ display:flex; align-items:center; gap:8px; }
-    .ts-label input{ margin-left:8px; vertical-align:middle; }
-    .two-col{ display:grid; grid-template-columns:1fr; gap:14px; }
-    @media (min-width: 860px){ .two-col{ grid-template-columns:1fr 1fr; } }
-    .card-lite{ border:1px solid var(--line); border-radius:10px; padding:12px; background:#0e0e0e; }
-    .small{ font-size:12px; color:var(--muted); }
-    .donate{ text-align:center; margin-top:20px; }
-    .donate img{ max-width:180px; margin-top:10px; }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>Bitcoin Block RNG</h1>
-  </header>
-
-  <main>
-    <!-- Landing Page -->
-    <section id="landing" class="section">
       <h2>Welcome</h2>
-      <p class="muted" style="margin-top:4px;">This site gives you random numbers that come straight from Bitcoin block hashes. It’s simple to use, easy to understand, and anyone can verify the results.</p>
+      <p class="muted" style="margin-top:4px;">
+        This site gives you random numbers that come straight from Bitcoin block hashes.
+        It’s simple to use, easy to understand, and anyone can verify the results.
+      </p>
 
-```
-  <div class="card-lite" style="margin-top:12px;">
-    <h3 style="margin:0 0 8px;">Why use Bitcoin blocks?</h3>
-    <p>Every Bitcoin block has a unique fingerprint called a hash. Nobody knows what the hash will be until the block is mined, and once it’s published, it can’t be changed. That makes it a fair and open way to get random numbers you can trust and verify.</p>
-    <ul style="margin:0 0 0 18px;">
-      <li><strong>Transparent:</strong> You can look up the block hash yourself.</li>
-      <li><strong>Verifiable:</strong> We show the blocks and provide a proof anyone can verify.</li>
-      <li><strong>Accessible:</strong> No accounts or sign‑ups—just click and go.</li>
-    </ul>
-  </div>
+      <div class="card-lite" style="margin-top:12px;">
+        <h3 style="margin:0 0 8px;">Why use Bitcoin blocks?</h3>
+        <p>
+          Every Bitcoin block has a unique fingerprint called a hash. Nobody knows what the hash will be
+          until the block is mined, and once it’s published, it can’t be changed. That makes it a fair
+          and open way to get random numbers you can trust and verify.
+        </p>
+        <ul style="margin:0 0 0 18px;">
+          <li><strong>Transparent:</strong> You can look up the block hash yourself.</li>
+          <li><strong>Verifiable:</strong> We show the blocks and provide a proof anyone can verify.</li>
+          <li><strong>Accessible:</strong> No accounts or sign-ups—just click and go.</li>
+        </ul>
+      </div>
 
-  <div class="card-lite" style="margin-top:12px;">
-    <h3 style="margin:0 0 8px;">How to use it</h3>
-    <ol style="margin:0 0 0 18px;">
-      <li>Click <em>Go to Random Number Generator</em>.</li>
-      <li>Pick how many numbers (up to 10) and the range you want (for example, 1–100).</li>
-      <li>Choose how many consecutive blocks (1–5). More blocks give extra protection against miner manipulation, but add about 10 minutes of waiting time per additional block.</li>
-      <li>(Optional) Turn on a public timestamp to lock in your choices before the block arrives, then press <em>Begin</em>.</li>
-      <li>Once the block(s) arrive, your random number(s) will be displayed, along with the hashes and an easy way to share or verify.</li>
-    </ol>
-  </div>
+      <div class="card-lite" style="margin-top:12px;">
+        <h3 style="margin:0 0 8px;">How to use it</h3>
+        <ol style="margin:0 0 0 18px;">
+          <li>Click <em>Go to Random Number Generator</em>.</li>
+          <li>Pick how many numbers (up to 10) and the range you want (for example, 1–100).</li>
+          <li>Choose how many consecutive blocks (1–5). More blocks give extra protection against miner manipulation, but add about 10 minutes of waiting time per additional block.</li>
+          <li>(Optional) Turn on a public timestamp to lock in your choices before the block arrives, then press <em>Begin</em>.</li>
+          <li>Once the block(s) arrive, your random number(s) will be displayed, along with the hashes and an easy way to share or verify.</li>
+        </ol>
+      </div>
 
-  <p class="small" style="margin-top:10px;">Tip: One block is quick and works well for most uses. If you’d like a little extra peace of mind, select more blocks and let the site combine them for you.</p>
+      <p class="small" style="margin-top:10px;">
+        Tip: One block is quick and works well for most uses. If you’d like a little extra peace of mind,
+        select more blocks and let the site combine them for you.
+      </p>
 
-  <button class="button" id="gotoGenerator" style="margin-top:12px;">Go to Random Number Generator</button>
-</section>
+      <button class="button" id="gotoGenerator" style="margin-top:12px;">Go to Random Number Generator</button>
+    </section>
 
     <!-- Generator Page -->
     <section id="generator" class="section hidden">
@@ -205,7 +168,7 @@
             <button id="copyShort" class="button" type="button">Copy Short Proof</button>
             <button id="copyLong" class="button" type="button">Copy Long Proof</button>
           </div>
-          <p class="muted" style="margin:8px 0 0;">Short proof is social‑friendly (≈140 chars). Long proof is fully self‑contained.</p>
+          <p class="muted" style="margin:8px 0 0;">Short proof is social-friendly (≈140 chars). Long proof is fully self-contained.</p>
         </div>
 
         <!-- Column B: Verify a short proof -->
@@ -225,7 +188,7 @@
       <!-- Fallback copy area (shown only if clipboard API fails) -->
       <div id="copyFallbackWrap" class="section hidden" style="max-width:980px;">
         <h3>Manual copy</h3>
-        <p class="muted">Your browser blocked 1‑click copy. Select and copy the text below manually (Ctrl/Cmd+C).</p>
+        <p class="muted">Your browser blocked 1-click copy. Select and copy the text below manually (Ctrl/Cmd+C).</p>
         <textarea id="copyFallback" class="mono" readonly></textarea>
       </div>
 

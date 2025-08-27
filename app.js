@@ -297,6 +297,16 @@
       </div>`;
     numbersEl.insertAdjacentHTML('beforeend', formulaNote);
 
+    // Explanation of the "fair range"
+const fairRangeNote = `
+  <div class="small muted" style="margin-top:4px;">
+    <strong>What does "fair range" mean?</strong>
+    We only accept values of X that fall below a threshold multiple of N,
+    so each outcome is equally likely. If X is above that threshold,
+    it would create bias — so we reject it and hash again.
+  </div>`;
+numbersEl.insertAdjacentHTML('beforeend', fairRangeNote);
+
     // proofs (with t). Include formula in long proof
     const canon = canonicalString({ prov:provCode, t:committed.tipAtCommit, s:committed.startHeight, k:committed.K, min, max, n:count, nums });
     const crc = crc32(canon).toString(16).toUpperCase().padStart(8,'0').slice(0,4);

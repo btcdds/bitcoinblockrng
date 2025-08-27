@@ -311,11 +311,22 @@ numbersEl.insertAdjacentHTML('beforeend', fairRangeNote);
     const canon = canonicalString({ prov:provCode, t:committed.tipAtCommit, s:committed.startHeight, k:committed.K, min, max, n:count, nums });
     const crc = crc32(canon).toString(16).toUpperCase().padStart(8,'0').slice(0,4);
     const shortProof = `BBRNG v1|p=${provCode}|t=${committed.tipAtCommit}|s=${committed.startHeight}|k=${committed.K}|r=${min}-${max}|n=${count}|x=[${nums.join(',')}]|crc=${crc}`;
-    const longProof  = `BBRNG v1
+    
+    const includeDecimals = qs('#include-decimals')?.checked;
+    const h0Dec = BigInt('0x' + h0).toString(10);
+    let decimalSection = '';
+    if (includeDecimals) {
+      const allDec = committed.hashes.map((h, idx) =>
+        `  H${idx+1}_dec= ${BigInt('0x' + h).toString(10)}`
+      ).join('\n');
+      decimalSection = `\n${allDec}`;
+    }
+const longProof  = `BBRNG v1
 prov=${provCode} t=${committed.tipAtCommit} start=${committed.startHeight} k=${committed.K} range=[${min},${max}] n=${count}
 H@${committed.startHeight}..${committed.startHeight+committed.K-1}=
 ${committed.hashes.map(h=>`  ${h}`).join('\n')}
 H0= 0x${h0}
+H0_dec= ${h0Dec}${decimalSection}
 nums=[${nums.join(',')}]
 formula: N = max-min+1; result_i = min + (X_i mod N) (with rejection sampling to avoid bias)
 crc=${crc}`;

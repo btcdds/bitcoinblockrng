@@ -1,21 +1,11 @@
 'use strict';
 (function(){
   const qs = (s)=>document.querySelector(s);
-
-  // Defensive navigation hookup
-  document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('gotoGenerator');
-    if (btn) {
-      btn.addEventListener('click', () => {
-        const landing = document.getElementById('landing');
-        const generator = document.getElementById('generator');
-        if (landing && generator) {
-          landing.classList.add('hidden');
-          generator.classList.remove('hidden');
-        }
-      });
-    }
-  });
+  // Navigation
+  const gotoBtn = qs('#gotoGenerator');
+  const landing = qs('#landing');
+  const generator = qs('#generator');
+  if (gotoBtn) gotoBtn.addEventListener('click', ()=>{ landing.classList.add('hidden'); generator.classList.remove('hidden'); });
 
   // Elements
   const beginBtn = qs('#begin');
@@ -83,23 +73,9 @@
       etaEl.textContent = remaining>0 ? ('ETA: ' + (diff<=0? ('Overdue by '+fmtDuration(-diff)) : fmtDuration(diff))) : 'ETA: --';
     }
   }, 1000); }
-  function setTipState(height, timestampSec){
-    const nowSec=Math.floor(Date.now()/1000);
-    lastTipHeight=Number(height);
-    lastTipTimestampSec=Math.min(Number(timestampSec)||0, nowSec);
-    tipEl.textContent='Block: #'+lastTipHeight.toLocaleString();
-  }
+  function setTipState(height, timestampSec){ const nowSec=Math.floor(Date.now()/1000); lastTipHeight=Number(height); lastTipTimestampSec=Math.min(Number(timestampSec)||0, nowSec); tipEl.textContent='Tip: #'+lastTipHeight.toLocaleString(); }
 
-  async function updateTipMeta(){
-    const prov = providers[qs('#provider').value];
-    try{
-      const hRaw=await prov.tipHeight();
-      const tipH=parseInt(hRaw,10);
-      const lastHash=await prov.hashByHeight(tipH);
-      const b=await prov.block(lastHash.trim());
-      setTipState(tipH, b.timestamp);
-    }catch(e){ /* ignore */ }
-  }
+  async function updateTipMeta(){ const prov = providers[qs('#provider').value]; try{ const hRaw=await prov.tipHeight(); const tipH=parseInt(hRaw,10); const lastHash=await prov.hashByHeight(tipH); const b=await prov.block(lastHash.trim()); setTipState(tipH, b.timestamp); }catch(e){} }
   (async function(){ try{ await updateTipMeta(); }catch(_){ } metaTimer=setInterval(updateTipMeta,60000); startUiTicker(); })();
 
   // Crypto helpers
@@ -107,39 +83,17 @@
   async function sha256Bytes(bytes){ const digest=await crypto.subtle.digest('SHA-256', bytes); return new Uint8Array(digest); }
   function bytesToHex(bytes){ return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(''); }
   function bigIntFromHex(hex){ return BigInt('0x'+hex); }
-  async function deriveSeedFromHashesBE(hashes){
-    const parts=hashes.map(h=>hexToBytes(h.trim()));
-    const totalLen=parts.reduce((a,b)=>a+b.length,0);
-    const concat=new Uint8Array(totalLen);
-    let o=0; for(const p of parts){ concat.set(p,o); o+=p.length; }
-    const h0=await sha256Bytes(concat);
-    return bytesToHex(h0);
-  }
-  function mapToRangeUniform256(uniformHex, min, max){
-    const range=BigInt(max-min+1);
-    const M=1n<<256n;
-    const threshold=M-(M%range);
-    const X=bigIntFromHex(uniformHex);
-    if(X>=threshold) return null; // reject & re-hash
-    const off=X%range;
-    return Number(BigInt(min)+off);
-  }
+  async function deriveSeedFromHashesBE(hashes){ const parts=hashes.map(h=>hexToBytes(h.trim())); const totalLen=parts.reduce((a,b)=>a+b.length,0); const concat=new Uint8Array(totalLen); let o=0; for(const p of parts){ concat.set(p,o); o+=p.length; } const h0=await sha256Bytes(concat); return bytesToHex(h0); }
+  function mapToRangeUniform256(uniformHex, min, max){ const range=BigInt(max-min+1); const M=1n<<256n; const threshold=M-(M%range); const X=bigIntFromHex(uniformHex); if(X>=threshold) return null; const off=X%range; return Number(BigInt(min)+off); }
   async function nextHex(hex){ const b=await sha256Bytes(hexToBytes(hex)); return bytesToHex(b); }
 
   // Canonical + CRC (include tip height t)
-  function canonicalString(params){
-    const { prov, t, s, k, min, max, n, nums } = params;
-    return `v=1|p=${prov}|t=${t}|s=${s}|k=${k}|min=${min}|max=${max}|n=${n}|nums=${(nums||[]).join(',')}`;
-  }
+  function canonicalString(params){ const { prov, t, s, k, min, max, n, nums } = params; return `v=1|p=${prov}|t=${t}|s=${s}|k=${k}|min=${min}|max=${max}|n=${n}|nums=${(nums||[]).join(',')}`; }
   const CRC_TABLE = (()=>{ let c,table=new Array(256); for(let n=0;n<256;n++){ c=n; for(let k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); table[n]=c>>>0; } return table; })();
   function crc32(str){ let c=0^(-1); for(let i=0;i<str.length;i++) c=(c>>>8)^CRC_TABLE[(c^str.charCodeAt(i))&0xFF]; return (c^(-1))>>>0; }
 
   // Copy commit
-  if (copyCommitBtn) copyCommitBtn.addEventListener('click', async ()=>{
-    if(!commitTA.value) return;
-    try{ await navigator.clipboard.writeText(commitTA.value); toast('Commit copied'); }
-    catch(e){ toast('Copy failed'); }
-  });
+  if (copyCommitBtn) copyCommitBtn.addEventListener('click', async ()=>{ if(!commitTA.value) return; try{ await navigator.clipboard.writeText(commitTA.value); toast('Commit copied'); }catch(e){ toast('Copy failed'); } });
 
   // Begin flow
   if (beginBtn) beginBtn.addEventListener('click', async ()=>{
@@ -165,7 +119,7 @@
         commitTA.value = commitStr;
         commitPrepared = true;
         commitHint.style.display='block';
-        commitHint.innerHTML = `Post this <strong>before block #${(committed.startHeight).toLocaleString()}</strong> exists (current block: <strong>#${(committed.tipAtCommit).toLocaleString()}</strong>). Then press <em>Begin</em> to start waiting.`;
+        commitHint.innerHTML = `Post this <strong>before block #${(committed.startHeight).toLocaleString()}</strong> exists (current tip: <strong>#${(committed.tipAtCommit).toLocaleString()}</strong>). Then press <em>Begin</em> to start waiting.`;
         copyCommitBtn.classList.remove('hidden');
         commitTA.classList.remove('hidden');
         // reveal helper links only after commit is generated
@@ -228,11 +182,7 @@
         try{
           const tipRaw = await prov.tipHeight();
           const tip = parseInt(tipRaw,10);
-          if(tip>=h){
-            const hash=(await prov.hashByHeight(h)).trim();
-            committed.hashes[h-committed.startHeight]=hash;
-            try{ const b=await prov.block(hash); setTipState(h,b.timestamp);}catch(_){ }
-          }
+          if(tip>=h){ const hash=(await prov.hashByHeight(h)).trim(); committed.hashes[h-committed.startHeight]=hash; try{ const b=await prov.block(hash); setTipState(h,b.timestamp);}catch(_){ } }
         }catch(_){ }
       }
     }
@@ -245,14 +195,7 @@
       try{
         const tipRaw = await prov.tipHeight();
         const tip = parseInt(tipRaw,10);
-        for(const h of missing){
-          if(controller?.cancelled) return;
-          if(tip>=h){
-            const hash=(await prov.hashByHeight(h)).trim();
-            committed.hashes[h-committed.startHeight]=hash;
-            try{ const b=await prov.block(hash); setTipState(h,b.timestamp);}catch(_){ }
-          }
-        }
+        for(const h of missing){ if(controller?.cancelled) return; if(tip>=h){ const hash=(await prov.hashByHeight(h)).trim(); committed.hashes[h-committed.startHeight]=hash; try{ const b=await prov.block(hash); setTipState(h,b.timestamp);}catch(_){ } } }
       }catch(_){ }
     }
   }
@@ -261,16 +204,7 @@
     const h0 = await deriveSeedFromHashesBE(committed.hashes);
     let h = h0; const results=[];
     for(let i=0;i<count;i++){
-      let rej=0;
-      while(true){
-        const mapped=mapToRangeUniform256(h,min,max);
-        if(mapped!==null){
-          results.push({ value:mapped, base16:'0x'+h, base10: BigInt('0x'+h).toString(10), rejections:rej });
-          break;
-        }
-        h=await nextHex(h);
-        rej++;
-      }
+      let rej=0; while(true){ const mapped=mapToRangeUniform256(h,min,max); if(mapped!==null){ results.push({ value:mapped, base16:'0x'+h, base10: BigInt('0x'+h).toString(10), rejections:rej }); break; } h=await nextHex(h); rej++; }
       h=await nextHex(h);
     }
     return { draws:results, h0 };
@@ -281,21 +215,7 @@
     const nums = draws.map(d=>d.value);
     committedInfo.innerHTML = `Committed: tip <span class="mono">#${committed.tipAtCommit.toLocaleString()}</span> → start <span class="mono">#${committed.startHeight.toLocaleString()}</span>, K=${committed.K}, provider=${providerName}`;
     hashesEl.innerHTML = '<div class="muted">Block hashes (BE):</div>' + committed.hashes.map((h,idx)=>`<div class="hash-line">H${idx+1} @ #${(committed.startHeight+idx).toLocaleString()}: ${h}</div>`).join('');
-    numbersEl.innerHTML =
-      '<div>Range: <span class="mono">['+min+','+max+']</span></div>' +
-      '<ol style="margin-top:6px;">' +
-      draws.map((d,i)=>`<li>Draw ${i+1}: <span class="mono">${d.value}</span><br><span class="muted">H[${i}] (hex accepted):</span> <span class="mono nowrap small">${d.base16}</span><br><span class="muted">H[${i}] (dec accepted):</span> <span class="mono small">${d.base10}</span><br><span class="muted">Rejections before accept:</span> <span class="mono small">${d.rejections}</span></li>`).join('') + '</ol>';
-
-    // Human-readable formula explanation (transparency)
-    const N = (max - min + 1);
-    const formulaNote = `
-      <div class="small muted" style="margin-top:8px;">
-        <strong>How the number was chosen:</strong>
-        Let N = ${N}. We convert the 256-bit hash H to a number X.
-        If X is in the fair range, result = min + (X mod N).
-        If not, we re-hash and try again so there’s no bias.
-      </div>`;
-    numbersEl.insertAdjacentHTML('beforeend', formulaNote);
+    numbersEl.innerHTML = '<div>Range: <span class="mono">['+min+','+max+']</span></div>' + '<ol style="margin-top:6px;">' + draws.map((d,i)=>`<li>Draw ${i+1}: <span class="mono">${d.value}</span><br><span class="muted">H[${i}] (hex accepted):</span> <span class="mono nowrap small">${d.base16}</span><br><span class="muted">H[${i}] (dec accepted):</span> <span class="mono small">${d.base10}</span><br><span class="muted">Rejections before accept:</span> <span class="mono small">${d.rejections}</span></li>`).join('') + '</ol>';
 
     // proofs (with t)
     const canon = canonicalString({ prov:provCode, t:committed.tipAtCommit, s:committed.startHeight, k:committed.K, min, max, n:count, nums });
@@ -325,7 +245,7 @@
 
   function verifyShortProof(s){
     if(!s) return false;
-    s = s.trim().replace(/^"|"$/g,'');
+    s = s.trim().replace(/^\"|\"$/g,''); // strip accidental quotes
     // If user pasted a long block, try to extract the short line
     if(!/^BBRNG v1\|/.test(s)){
       const m = s.match(/BBRNG v1\|[^\n\r]+/);

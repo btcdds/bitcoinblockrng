@@ -319,22 +319,25 @@ const fairRangeNote = `
   </div>`;
 numbersEl.insertAdjacentHTML('beforeend', fairRangeNote);
 
-    // proofs (with t). Include formula in long proof
-    const canon = canonicalString({ prov:provCode, t:committed.tipAtCommit, s:committed.startHeight, k:committed.K, min, max, n:count, nums });
-    const crc = crc32(canon).toString(16).toUpperCase().padStart(8,'0').slice(0,4);
-    const shortProof = `BBRNG v1|p=${provCode}|t=${committed.tipAtCommit}|s=${committed.startHeight}|k=${committed.K}|r=${min}-${max}|n=${count}|x=[${nums.join(',')}]|crc=${crc}`;
     
-    // Determine inclusion of decimal hashes based on results-page checkbox and K
-    const includeDecimals = (document.getElementById('include-decimals-results')?.checked) && (committed.K >= 2);
-    const h0Dec = BigInt('0x' + h0).toString(10);
-    let decimalSection = '';
-    if (includeDecimals) {
-      const allDec = committed.hashes.map((h, idx) =>
-        `  H${idx+1}_dec= ${BigInt('0x' + h).toString(10)}`
-      ).join('\n');
-      decimalSection = `\n${allDec}`;
-    }
-const longProof  = `BBRNG v1
+    // Build proofs on-demand (respect checkbox state at copy time)
+    function buildProofs(){
+      const canon = canonicalString({ prov:provCode, t:committed.tipAtCommit, s:committed.startHeight, k:committed.K, min, max, n:count, nums });
+      const crc = crc32(canon).toString(16).toUpperCase().padStart(8,'0').slice(0,4);
+      const shortProof = `BBRNG v1|p=${provCode}|t=${committed.tipAtCommit}|s=${committed.startHeight}|k=${committed.K}|r=${min}-${max}|n=${count}|x=[${nums.join(',')}]|crc=${crc}`;
+
+      // Determine inclusion of decimal hashes based on results-page checkbox and K
+      const includeDecimals = (document.getElementById('include-decimals-results')?.checked) && (committed.K >= 2);
+      const h0Dec = BigInt('0x' + h0).toString(10);
+      let decimalSection = '';
+      if (includeDecimals) {
+        const allDec = committed.hashes.map((h, idx) =>
+          `  H${idx+1}_dec= ${BigInt('0x' + h).toString(10)}`
+        ).join('\n');
+        decimalSection = `\n${allDec}`;
+      }
+
+      const longProof  = `BBRNG v1
 prov=${provCode} t=${committed.tipAtCommit} start=${committed.startHeight} k=${committed.K} range=[${min},${max}] n=${count}
 H@${committed.startHeight}..${committed.startHeight+committed.K-1}=
 ${committed.hashes.map(h=>`  ${h}`).join('\n')}
@@ -344,12 +347,18 @@ nums=[${nums.join(',')}]
 formula: N = max-min+1; result_i = min + (X_i mod N) (with rejection sampling to avoid bias)
 crc=${crc}`;
 
+      return { shortProof, longProof };
+    }
+
+    // Copy handlers use the builder
     if (copyShortBtn) copyShortBtn.onclick = async ()=>{
+      const { shortProof } = buildProofs();
       const ref = (noteUrl.value||'').trim();
       const payload = ref ? `${shortProof}|ref=${ref}` : shortProof;
       try{ await navigator.clipboard.writeText(payload); toast('Short proof copied'); }catch(e){ showCopyFallback(payload); }
     };
     if (copyLongBtn) copyLongBtn.onclick = async ()=>{
+      const { longProof } = buildProofs();
       const ref = (noteUrl.value||'').trim();
       const payload = ref ? `${longProof}\nref=${ref}` : longProof;
       try{ await navigator.clipboard.writeText(payload); toast('Long proof copied'); }catch(e){ showCopyFallback(payload); }
@@ -360,8 +369,9 @@ crc=${crc}`;
       verifyStatus.textContent = verifyShortProof(s) ? 'Short proof format/CRC looks valid.' : 'Invalid or tampered short proof.';
     };
 
-    // store for verifier closure
-    window.__BBRNG_LAST = { shortProof, longProof };
+    // store for verifier closure (last built proofs)
+    (function(){ try{ const p = buildProofs(); window.__BBRNG_LAST = p; }catch(_){ /* ignore */ } })();
+window.__BBRNG_LAST = { shortProof, longProof };
   }
 
   function verifyShortProof(s){

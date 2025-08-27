@@ -279,7 +279,7 @@
   function renderResults({ draws, h0, min, max, count }){
     const providerName = qs('#provider').value; const provCode = providerName==='mempool'?'mp':'bs';
     const nums = draws.map(d=>d.value);
-    committedInfo.innerHTML = `Committed: tip <span class="mono">#${committed.tipAtCommit.toLocaleString()}</span> → start <span class="mono">#${committed.startHeight.toLocaleString()}</span>, K=${committed.K}, provider=${providerName}`;
+    committedInfo.innerHTML = `Committed: block <span class="mono">#${committed.tipAtCommit.toLocaleString()}</span> → start <span class="mono">#${committed.startHeight.toLocaleString()}</span>, K=${committed.K}, provider=${providerName}`;
     hashesEl.innerHTML = '<div class="muted">Block hashes (BE):</div>' + committed.hashes.map((h,idx)=>`<div class="hash-line">H${idx+1} @ #${(committed.startHeight+idx).toLocaleString()}: ${h}</div>`).join('');
     numbersEl.innerHTML =
       '<div>Range: <span class="mono">['+min+','+max+']</span></div>' +

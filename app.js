@@ -279,6 +279,18 @@
   function renderResults({ draws, h0, min, max, count }){
     const providerName = qs('#provider').value; const provCode = providerName==='mempool'?'mp':'bs';
     const nums = draws.map(d=>d.value);
+    // Toggle visibility of decimal option on results page (only if K>=2)
+    const decimalsRow = document.getElementById('decimalsRow');
+    const includeDecCB = document.getElementById('include-decimals-results');
+    if (decimalsRow && includeDecCB) {
+      if (committed.K >= 2) {
+        decimalsRow.classList.remove('hidden');
+      } else {
+        decimalsRow.classList.add('hidden');
+        includeDecCB.checked = false;
+      }
+    }
+
     committedInfo.innerHTML = `Committed: block <span class="mono">#${committed.tipAtCommit.toLocaleString()}</span> → start <span class="mono">#${committed.startHeight.toLocaleString()}</span>, K=${committed.K}, provider=${providerName}`;
     hashesEl.innerHTML = '<div class="muted">Block hashes (BE):</div>' + committed.hashes.map((h,idx)=>`<div class="hash-line">H${idx+1} @ #${(committed.startHeight+idx).toLocaleString()}: ${h}</div>`).join('');
     numbersEl.innerHTML =
@@ -312,7 +324,8 @@ numbersEl.insertAdjacentHTML('beforeend', fairRangeNote);
     const crc = crc32(canon).toString(16).toUpperCase().padStart(8,'0').slice(0,4);
     const shortProof = `BBRNG v1|p=${provCode}|t=${committed.tipAtCommit}|s=${committed.startHeight}|k=${committed.K}|r=${min}-${max}|n=${count}|x=[${nums.join(',')}]|crc=${crc}`;
     
-    const includeDecimals = qs('#include-decimals')?.checked;
+    // Determine inclusion of decimal hashes based on results-page checkbox and K
+    const includeDecimals = (document.getElementById('include-decimals-results')?.checked) && (committed.K >= 2);
     const h0Dec = BigInt('0x' + h0).toString(10);
     let decimalSection = '';
     if (includeDecimals) {

@@ -111,12 +111,6 @@
             <option value="blockstream">blockstream.info (Esplora)</option>
           </select>
         </div>
-        <div>
-          <label>
-            <input type="checkbox" id="include-decimals" />
-            Include decimal form of hashes in proof
-          </label>
-        </div>
       </div>
 
       <!-- Public timestamp area -->
@@ -174,6 +168,13 @@
             <button id="copyShort" class="button" type="button">Copy Short Proof</button>
             <button id="copyLong" class="button" type="button">Copy Long Proof</button>
           </div>
+          <div id="decimalsRow" class="row hidden" style="margin-top:8px; gap:8px; align-items:center;">
+            <label class="muted" style="display:flex; align-items:center; gap:8px; margin:0;">
+              Include decimal form of block hashes in long proof
+              <input type="checkbox" id="include-decimals-results" />
+            </label>
+          </div>
+
           <p class="muted" style="margin:8px 0 0;">Short proof is social-friendly (≈140 chars). Long proof is fully self-contained.</p>
         </div>
 

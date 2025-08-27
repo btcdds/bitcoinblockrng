@@ -182,7 +182,7 @@
         try{
           const tipRaw = await prov.tipHeight();
           const tip = parseInt(tipRaw,10);
-          if(tip>=h){ const hash=(await prov.hashByHeight(h)).trim(); committed.hashes[h-committed.startHeight]=hash; try{ const b=await prov.block(hash); setTipState(h,b.timestamp);}catch(_){ } }
+          if(tip>=h){ const hash=(await prov.hashByHeight(h)).trim(); committed.hashes[h-committed.startHeight]=hash; try{ const b=await prov.block(hash); setTipState(h,b.timestamp);}catchch(_){ } }
         }catch(_){ }
       }
     }
@@ -195,7 +195,7 @@
       try{
         const tipRaw = await prov.tipHeight();
         const tip = parseInt(tipRaw,10);
-        for(const h of missing){ if(controller?.cancelled) return; if(tip>=h){ const hash=(await prov.hashByHeight(h)).trim(); committed.hashes[h-committed.startHeight]=hash; try{ const b=await prov.block(hash); setTipState(h,b.timestamp);}catch(_){ } } }
+        for(const h of missing){ if(controller?.cancelled) return; if(tip>=h){ const hash=(await prov.hashByHeight(h)).trim(); committed.hashes[h-committed.startHeight]=hash; try{ const b=await prov.block(hash); setTipState(h,b.timestamp);}catchch(_){ } } }
       }catch(_){ }
     }
   }
@@ -217,46 +217,20 @@
     hashesEl.innerHTML = '<div class="muted">Block hashes (BE):</div>' + committed.hashes.map((h,idx)=>`<div class="hash-line">H${idx+1} @ #${(committed.startHeight+idx).toLocaleString()}: ${h}</div>`).join('');
     numbersEl.innerHTML = '<div>Range: <span class="mono">['+min+','+max+']</span></div>' + '<ol style="margin-top:6px;">' + draws.map((d,i)=>`<li>Draw ${i+1}: <span class="mono">${d.value}</span><br><span class="muted">H[${i}] (hex accepted):</span> <span class="mono nowrap small">${d.base16}</span><br><span class="muted">H[${i}] (dec accepted):</span> <span class="mono small">${d.base10}</span><br><span class="muted">Rejections before accept:</span> <span class="mono small">${d.rejections}</span></li>`).join('') + '</ol>';
 
-    // Build proofs on-demand (respect checkbox state at copy time)
-    function buildProofs(){
-      const canon = canonicalString({ prov:provCode, t:committed.tipAtCommit, s:committed.startHeight, k:committed.K, min, max, n:count, nums });
-      const crc = crc32(canon).toString(16).toUpperCase().padStart(8,'0').slice(0,4);
-      const shortProof = `BBRNG v1|p=${provCode}|t=${committed.tipAtCommit}|s=${committed.startHeight}|k=${committed.K}|r=${min}-${max}|n=${count}|x=[${nums.join(',')}]|crc=${crc}`;
-      const includeDecimals = (document.getElementById('include-decimals-results')?.checked) && (committed.K >= 2);
-      const h0Dec = BigInt('0x' + h0).toString(10);
-      let decimalSection = '';
-      if (includeDecimals) {
-        const allDec = committed.hashes.map((h, idx) =>
-          `  H${idx+1}_dec= ${BigInt('0x' + h).toString(10)}`
-        ).join('
-');
-        decimalSection = `
-${allDec}`;
-      }
-      const longProof  = `BBRNG v1
-prov=${provCode} t=${committed.tipAtCommit} start=${committed.startHeight} k=${committed.K} range=[${min},${max}] n=${count}
-H@${committed.startHeight}..${committed.startHeight+committed.K-1}=
-${committed.hashes.map(h=>`  ${h}`).join('
-')}
-H0= 0x${h0}
-H0_dec= ${h0Dec}${decimalSection}
-nums=[${nums.join(',')}]
-formula: N = max-min+1; result_i = min + (X_i mod N) (with rejection sampling to avoid bias)
-crc=${crc}`;
-      return { shortProof, longProof };
-    }
+    // proofs (with t)
+    const canon = canonicalString({ prov:provCode, t:committed.tipAtCommit, s:committed.startHeight, k:committed.K, min, max, n:count, nums });
+    const crc = crc32(canon).toString(16).toUpperCase().padStart(8,'0').slice(0,4);
+    const shortProof = `BBRNG v1|p=${provCode}|t=${committed.tipAtCommit}|s=${committed.startHeight}|k=${committed.K}|r=${min}-${max}|n=${count}|x=[${nums.join(',')}]|crc=${crc}`;
+    const longProof  = `BBRNG v1\nprov=${provCode} t=${committed.tipAtCommit} start=${committed.startHeight} k=${committed.K} range=[${min},${max}] n=${count}\nH@${committed.startHeight}..${committed.startHeight+committed.K-1}=\n${committed.hashes.map(h=>`  ${h}`).join('\n')}\nH0= 0x${h0}\nnums=[${nums.join(',')}]\ncrc=${crc}`;
 
     if (copyShortBtn) copyShortBtn.onclick = async ()=>{
-      const { shortProof } = buildProofs();
       const ref = (noteUrl.value||'').trim();
       const payload = ref ? `${shortProof}|ref=${ref}` : shortProof;
       try{ await navigator.clipboard.writeText(payload); toast('Short proof copied'); }catch(e){ showCopyFallback(payload); }
     };
     if (copyLongBtn) copyLongBtn.onclick = async ()=>{
-      const { longProof } = buildProofs();
       const ref = (noteUrl.value||'').trim();
-      const payload = ref ? `${longProof}
-ref=${ref}` : longProof;
+      const payload = ref ? `${longProof}\nref=${ref}` : longProof;
       try{ await navigator.clipboard.writeText(payload); toast('Long proof copied'); }catch(e){ showCopyFallback(payload); }
     };
 
@@ -265,9 +239,9 @@ ref=${ref}` : longProof;
       verifyStatus.textContent = verifyShortProof(s) ? 'Short proof format/CRC looks valid.' : 'Invalid or tampered short proof.';
     };
 
-    // store last built proofs (for debugging)
-    (function(){ try{ const p = buildProofs(); window.__BBRNG_LAST = p; }catch(_){ } })();
-}
+    // store for verifier closure
+    window.__BBRNG_LAST = { shortProof, longProof };
+  }
 
   function verifyShortProof(s){
     if(!s) return false;

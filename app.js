@@ -73,7 +73,7 @@
       etaEl.textContent = remaining>0 ? ('ETA: ' + (diff<=0? ('Overdue by '+fmtDuration(-diff)) : fmtDuration(diff))) : 'ETA: --';
     }
   }, 1000); }
-  function setTipState(height, timestampSec){ const nowSec=Math.floor(Date.now()/1000); lastTipHeight=Number(height); lastTipTimestampSec=Math.min(Number(timestampSec)||0, nowSec); tipEl.textContent='Tip: #'+lastTipHeight.toLocaleString(); }
+  function setTipState(height, timestampSec){ const nowSec=Math.floor(Date.now()/1000); lastTipHeight=Number(height); lastTipTimestampSec=Math.min(Number(timestampSec)||0, nowSec); tipEl.textContent='Block: #'+lastTipHeight.toLocaleString(); }
 
   async function updateTipMeta(){ const prov = providers[qs('#provider').value]; try{ const hRaw=await prov.tipHeight(); const tipH=parseInt(hRaw,10); const lastHash=await prov.hashByHeight(tipH); const b=await prov.block(lastHash.trim()); setTipState(tipH, b.timestamp); }catch(e){} }
   (async function(){ try{ await updateTipMeta(); }catch(_){ } metaTimer=setInterval(updateTipMeta,60000); startUiTicker(); })();

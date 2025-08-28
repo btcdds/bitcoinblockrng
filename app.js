@@ -1,17 +1,10 @@
 'use strict';
-/* Bitcoin Block RNG — app.js (robust v3)
- * Focused fixes:
- *  - Begin button reliably starts the flow; if "Use commit" is checked and no commit exists,
- *    the first click generates a commit string and asks you to click Begin again (explicit message).
- *  - Tip/ETA/Since pills update immediately and every minute. If the chosen provider fails,
- *    it automatically falls back to the other one.
- *  - Copy Short/Long proof work; Long proof optionally includes decimal hashes when checkbox is checked and K≥2.
- *  - Defensive guards so one error does not break the whole UI.
- *
- * Notes:
- *  - This file is a full replacement. It preserves your UI IDs and intended behavior.
- *  - Providers used: mempool.space and blockstream.info (Esplora). CORS-friendly.
- *  - Deterministic number draws with rejection sampling to avoid modulo bias.
+/* Bitcoin Block RNG — app.js (v3.2)
+ * Updates over v3:
+ *  - Tip pill label changed to "Block #".
+ *  - Result numbers rendered as large, boxed badges.
+ *  - Long proof: each hash on its own line as H0=... (hex) and optional H0_dec=... (decimal).
+ *  - Defensive guards throughout.
  */
 
 (function(){
@@ -46,6 +39,23 @@
     toast('Copy failed; use manual copy box.');
   }
 
+  // ---------- Inject styles for big result numbers ----------
+  function ensureStyles(){
+    try {
+      if (!document.getElementById('bbrng-style')) {
+        const st = document.createElement('style'); st.id = 'bbrng-style';
+        st.textContent = [
+          '.rng-number-grid{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px}',
+          '.rng-number-badge{display:inline-flex;align-items:center;justify-content:center;',
+          'font-size:clamp(32px,6vw,72px);line-height:1.1;font-weight:800;',
+          'padding:12px 18px;border:2px solid currentColor;border-radius:12px;',
+          'min-width:72px;box-shadow:0 1px 6px rgba(0,0,0,.12)}'
+        ].join('');
+        document.head.appendChild(st);
+      }
+    } catch(e) {}
+  }
+
   // ---------- State ----------
   let lastTipHeight = null;
   let lastTipTimestampSec = null; // unix seconds
@@ -57,7 +67,7 @@
   let waitController = null;   // { cancelled: boolean }
 
   // Expose for other modules (copy handlers, etc.)
-  window.__BBRNG_LAST = null;  // { shortProof, longProof, committed }
+  window.__BBRNG_LAST = null;  // { shortProof, longProofHeader, committed, meta:{min,max,count} }
 
   // ---------- Providers ----------
   const providers = {
@@ -133,7 +143,6 @@
         const since = Math.max(0, now - lastTipTimestampSec);
         if (sinceEl) sinceEl.textContent = 'Since last block: ' + fmtDuration(since);
 
-        // Remaining blocks if we are in a waiting phase
         const remaining = (committed && !committed.done) ? committed.hashes.reduce((n,h) => n + (h?0:1), 0) : 0;
         const target = remaining * 600; // ~10 min per block
         const diff = target - since;
@@ -148,10 +157,8 @@
 
   // ---------- Commit string helpers ----------
   function canonicalString({ prov, t, s, k, min, max, n }){
-    // Stable, lowercased keys
     return `prov=${prov}|tip=${t}|start=${s}|k=${k}|min=${min}|max=${max}|n=${n}`;
   }
-  // CRC-32 for a short integrity check (poly 0xEDB88320)
   function crc32(str){
     let c = ~0 >>> 0;
     for (let i=0;i<str.length;i++){
@@ -176,12 +183,9 @@
     return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
   }
 
-  // Deterministic draw with rejection sampling to avoid modulo bias.
-  // Seed = SHA256( concat(K block hashes as bytes) || "draw:" || drawIndex )
   async function drawInRange(hashes, min, max, drawIndex){
     const range = (max - min + 1);
     if (range <= 0) throw new Error('Bad range');
-    // Prepare seed material
     const concat = hashes.map(h => hexToBytes(h)).reduce((acc,cur)=>{
       const tmp = new Uint8Array(acc.length + cur.length);
       tmp.set(acc,0); tmp.set(cur, acc.length);
@@ -191,32 +195,25 @@
     const seed = new Uint8Array(concat.length + salt.length);
     seed.set(concat,0); seed.set(salt, concat.length);
 
-    // Expand to 8 bytes (64-bit) from SHA256 output
-    // Use rejection sampling against the largest multiple <= 2^64-1
     while(true){
       const h = await sha256Bytes(seed);
-      // Next seed = hash || salt (domain separation per iteration)
       const nextSeed = new Uint8Array(h.length + salt.length);
       nextSeed.set(h,0); nextSeed.set(salt,h.length);
       seed.set(nextSeed);
 
-      // Take first 8 bytes as unsigned 64-bit
       let x = 0n;
       for (let i=0;i<8;i++){ x = (x<<8n) | BigInt(h[i]); }
-      const bigRange = BigInt(range);
+      const rangeBig = BigInt(range);
       const max64 = (1n<<64n) - 1n;
-      const limit = (max64 // floor(max64 / bigRange) * bigRange - 1 then +1 window
-                     - (max64 % bigRange));
+      const limit = max64 - (max64 % rangeBig);
       if (x < limit){
-        const v = Number(x % bigRange) + min;
-        return v;
+        return Number(x % rangeBig) + min;
       }
-      // else: rejection, loop for another hash
     }
   }
 
   async function drawsFromK(min, max, count){
-    const hashes = committed.hashes.slice(); // filled by waitForCommittedBlocks
+    const hashes = committed.hashes.slice();
     const results = [];
     for (let i=0;i<count;i++){
       results.push(await drawInRange(hashes, min, max, i));
@@ -231,8 +228,6 @@
     let h = committed.startHeight;
     for (let i=0; i<committed.K; i++){
       if (controller.cancelled) return;
-      // Poll until height h exists
-      // Strategy: ask for hash at height until it returns 200
       let hash = null;
       while(!hash){
         if (controller.cancelled) return;
@@ -245,12 +240,11 @@
         if (!hash) await new Promise(r => setTimeout(r, 5000));
       }
       committed.hashes[i] = hash;
-      // For ETA pill: each new block arrival resets lastTipTimestampSec
       try {
         const b = await prov.block(hash);
-        const tipH = h; // we just got this height
+        const tipH = h;
         setTipState(tipH, b.timestamp || (b.time ? Math.floor(b.time/1000) : null));
-      } catch(e){ /* non-fatal */ }
+      } catch(e){}
       h++;
     }
   }
@@ -261,7 +255,6 @@
     const numbersEl = qs('#numbers');
     const committedInfo = qs('#committedInfo');
 
-    // Hash list
     if (hashesEl){
       const lis = committed.hashes.map((h, i) =>
         `<li><strong>H${i}</strong>: <span class="mono">${h}</span></li>`
@@ -269,13 +262,11 @@
       hashesEl.innerHTML = `<h4 style="margin:6px 0;">Block hashes</h4><ul class="mono">${lis}</ul>`;
     }
 
-    // Numbers
     if (numbersEl){
-      const spans = draws.map((n,i)=> `<span class="pill">${n}</span>`).join('');
-      numbersEl.innerHTML = `<h4 style="margin:6px 0;">Random number${count>1?'s':''}</h4><div class="row">${spans}</div>`;
+      const badges = draws.map((n,i)=> `<div class="rng-number-badge" aria-label="random number ${i+1}">${n}</div>`).join('');
+      numbersEl.innerHTML = `<h4 style="margin:6px 0;">Random number${count>1?'s':''}</h4><div class="rng-number-grid">${badges}</div>`;
     }
 
-    // Commit info
     if (committedInfo){
       const provCode = (providers[committed.providerName] || providers.mempool).code;
       const canon = canonicalString({
@@ -289,14 +280,9 @@
       committedInfo.innerHTML = `Commit: <span class="mono">BBRNG-commit ${canon}|crc=${crc}</span>`;
     }
 
-    // Compose proofs for copy buttons
-    const shortProof = `BBRNG v1|k=${committed.K}|min=${min}|max=${max}|n=${count}|H0=${h0}`;
-    const longProof = [
-      shortProof,
-      `H=[${committed.hashes.join(',')}]`
-    ].join('\n');
-
-    window.__BBRNG_LAST = { shortProof, longProof, committed };
+    const longProofHeader = `BBRNG v1|k=${committed.K}|min=${min}|max=${max}|n=${count}`;
+    const shortProof = `${longProofHeader}|H0=${h0}`;
+    window.__BBRNG_LAST = { shortProof, longProofHeader, committed, meta:{min,max,count} };
   }
 
   // ---------- Decimals row (Results) ----------
@@ -306,14 +292,13 @@
     const shouldShow = committed && committed.K >= 2;
     row.classList.toggle('hidden', !shouldShow);
   }
-
   function toDecimalListFromHex(hexList){
     if (!Array.isArray(hexList)) return [];
     const out = [];
     for (const hx of hexList){
       if (!hx || typeof hx !== 'string') continue;
       const clean = hx.trim().replace(/^0x/i,'');
-      try { out.push(BigInt('0x' + clean).toString(10)); } catch(_){}
+      try { out.push(BigInt('0x' + clean).toString(10)); } catch(e){}
     }
     return out;
   }
@@ -321,12 +306,12 @@
   // ---------- Wire up UI ----------
   document.addEventListener('DOMContentLoaded', () => {
     try{
-      // Sections
+      ensureStyles();
+
       const landing   = qs('#landing');
       const generator = qs('#generator');
       const results   = qs('#results');
 
-      // Goto button
       const gotoBtn = qs('#gotoGenerator');
       on(gotoBtn, 'click', () => {
         if (landing) landing.classList.add('hidden');
@@ -334,7 +319,6 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
 
-      // Copy Commit button (only visible after commit prepared)
       const copyCommitBtn = qs('#copy-commit');
       on(copyCommitBtn, 'click', async () => {
         try{
@@ -345,11 +329,9 @@
         }catch(e){ showCopyFallback(qs('#commit-string')?.value || ''); }
       });
 
-      // Begin flow
       const beginBtn = qs('#begin');
       const stopBtn  = qs('#stop');
       on(beginBtn, 'click', async () => {
-        // Read inputs
         const count = clampInt(parseInt(qs('#count')?.value,10), 1, 10);
         const min   = parseInt(qs('#min')?.value,10);
         const max   = parseInt(qs('#max')?.value,10);
@@ -358,7 +340,6 @@
         if (!Number.isFinite(min) || !Number.isFinite(max) || max < min){ toast('Invalid range'); return; }
         if ((max - min) > 1e12){ toast('Range too large (≤1e12)'); return; }
 
-        // Phase A: commit prep (only once)
         const useCommit = qs('#use-commit');
         if (useCommit && useCommit.checked && !commitPrepared){
           try{
@@ -395,24 +376,21 @@
 
             commitPrepared = true;
             toast('Commit created. Copy it, post it, then press Begin again.');
-            return; // wait for user to press Begin again
+            return;
           }catch(e){
             toast('Could not prepare commit: ' + (e?.message || e));
             return;
           }
         }
 
-        // Phase B: Wait for blocks then draw
         beginBtn.disabled = true;
         if (stopBtn) stopBtn.disabled = false;
         waitController = { cancelled:false };
 
-        // Pause meta polling while actively waiting
         if (metaTimer){ clearInterval(metaTimer); metaTimer = null; }
 
         try{
           if (!committed || committed.K !== K || committed.providerName !== providerName){
-            // If no commit was prepared or K/provider changed, set defaults now (no public timestamp)
             const tipRaw = await (providers[providerName] || providers.mempool).tipHeight();
             const tipH = parseInt((tipRaw||'').toString().trim(), 10);
             committed = { tipAtCommit: tipH, startHeight: tipH+1, K, providerName, hashes:new Array(K).fill(null), done:false };
@@ -420,20 +398,17 @@
 
           await waitForCommittedBlocks(waitController);
           if (waitController.cancelled){
-            toast('Stopped.');
-            beginBtn.disabled = false;
-            if (stopBtn) stopBtn.disabled = true;
+            toast('Stopped.'); beginBtn.disabled = false; if (stopBtn) stopBtn.disabled = true;
             if (!metaTimer) metaTimer = setInterval(updateTipMeta, 60000);
             return;
           }
-          const count2 = clampInt(parseInt(qs('#count')?.value,10), 1, 10); // re-read in case user changed
+          const count2 = clampInt(parseInt(qs('#count')?.value,10), 1, 10);
           const min2 = parseInt(qs('#min')?.value,10);
           const max2 = parseInt(qs('#max')?.value,10);
           const { draws, h0 } = await drawsFromK(min2, max2, count2);
           renderResults({ draws, h0, min:min2, max:max2, count:count2 });
           toggleDecimalsRow();
 
-          // navigate to results
           if (generator) generator.classList.add('hidden');
           if (results) results.classList.remove('hidden');
 
@@ -453,7 +428,6 @@
 
       on(stopBtn, 'click', () => { if (waitController) waitController.cancelled = true; });
 
-      // Copy Short / Long
       const copyShortBtn = qs('#copyShort');
       const copyLongBtn  = qs('#copyLong');
       on(copyShortBtn, 'click', async () => {
@@ -469,24 +443,33 @@
       });
       on(copyLongBtn, 'click', async () => {
         const last = window.__BBRNG_LAST;
-        if (!last || !last.longProof){ toast('No long proof yet.'); return; }
-        let payload = last.longProof;
-        // Optional decimals row (K>=2 and checkbox checked)
+        if (!last || !last.longProofHeader || !last.committed || !Array.isArray(last.committed.hashes)){
+          toast('No long proof yet.'); return;
+        }
+        const lines = [ last.longProofHeader ];
         const includeDecimals = qs('#include-decimals-results');
-        if (includeDecimals && includeDecimals.checked && last.committed && Array.isArray(last.committed.hashes)){
-          const decs = toDecimalListFromHex(last.committed.hashes);
-          if (decs.length) payload += `\nH_dec=[${decs.join(',')}]`;
+        const wantDec = !!(includeDecimals && includeDecimals.checked);
+        for (let i=0;i<last.committed.hashes.length;i++){
+          const hx = last.committed.hashes[i];
+          lines.push(`H${i}=${hx}`);
+          if (wantDec){
+            try {
+              const dec = BigInt('0x' + String(hx).replace(/^0x/i,'').trim()).toString(10);
+              lines.push(`H${i}_dec=${dec}`);
+            } catch(e){}
+          }
         }
         const refInput = qs('#note-url');
         const ref = refInput && refInput.value ? refInput.value.trim() : '';
-        if (ref) payload += `\nref=${ref}`;
+        if (ref) lines.push(`ref=${ref}`);
+
+        const payload = lines.join('\n');
         try{
           await navigator.clipboard.writeText(payload);
           toast('Long proof copied.');
         }catch(e){ showCopyFallback(payload); }
       });
 
-      // Verify Short (basic format check that the line is present)
       const verifyShortBox = qs('#verifyShortBox');
       const verifyBtn = qs('#verifyBtn');
       const verifyStatus = qs('#verifyStatus');
@@ -498,14 +481,12 @@
         else verifyStatus.textContent = 'Could not find a valid short proof line.';
       });
 
-      // Initial tip meta + ticker
       (async function boot(){
         try{ await updateTipMeta(); }catch(e){}
         if (!metaTimer) metaTimer = setInterval(updateTipMeta, 60000);
         startUiTicker();
       })();
 
-      // Default Results decimals row hidden at start
       toggleDecimalsRow();
     }catch(initErr){
       console.error('Init error', initErr);

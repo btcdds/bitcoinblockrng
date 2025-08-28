@@ -1,10 +1,15 @@
 'use strict';
-/* Bitcoin Block RNG — app.js (v3.2)
- * Updates over v3:
- *  - Tip pill label changed to "Block #".
- *  - Result numbers rendered as large, boxed badges.
- *  - Long proof: each hash on its own line as H0=... (hex) and optional H0_dec=... (decimal).
- *  - Defensive guards throughout.
+/* Bitcoin Block RNG — app.js (v3.3)
+ * New:
+ *  - Long proof now includes R-lines (R0=..., R1=...) with the actual numbers.
+ *  - Appends a 'FORMULA' section showing M, and per-draw U64 + evaluation:
+ *      R{i} = MIN + (U64_{i} mod M) = RESULT
+ *      U64_{i}=..., accepted_after=... iteration(s)
+ *    (We use unbiased rejection sampling; the U64 shown is the accepted one.)
+ * Previous (v3.2):
+ *  - 'Block #' pill label
+ *  - Large boxed number badges
+ *  - Per-line hashes (H0, H1 ...) with optional H{n}_dec lines
  */
 
 (function(){
@@ -67,7 +72,7 @@
   let waitController = null;   // { cancelled: boolean }
 
   // Expose for other modules (copy handlers, etc.)
-  window.__BBRNG_LAST = null;  // { shortProof, longProofHeader, committed, meta:{min,max,count} }
+  window.__BBRNG_LAST = null;  // { shortProof, longProofHeader, committed, meta:{min,max,count,draws,traces} }
 
   // ---------- Providers ----------
   const providers = {
@@ -179,11 +184,9 @@
     const digest = await crypto.subtle.digest('SHA-256', bytes);
     return new Uint8Array(digest);
   }
-  function bytesToHex(bytes){
-    return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
-  }
 
-  async function drawInRange(hashes, min, max, drawIndex){
+  // Deterministic, unbiased draw with rejection sampling.
+  async function drawInRangeDetailed(hashes, min, max, drawIndex){
     const range = (max - min + 1);
     if (range <= 0) throw new Error('Bad range');
     const concat = hashes.map(h => hexToBytes(h)).reduce((acc,cur)=>{
@@ -195,30 +198,42 @@
     const seed = new Uint8Array(concat.length + salt.length);
     seed.set(concat,0); seed.set(salt, concat.length);
 
+    const rangeBig = BigInt(range);
+    const max64 = (1n<<64n) - 1n;
+    const limit = max64 - (max64 % rangeBig);
+    let iterations = 0;
     while(true){
       const h = await sha256Bytes(seed);
+      iterations++;
+      // Next seed = hash || salt (domain separation per iteration)
       const nextSeed = new Uint8Array(h.length + salt.length);
       nextSeed.set(h,0); nextSeed.set(salt,h.length);
       seed.set(nextSeed);
 
       let x = 0n;
       for (let i=0;i<8;i++){ x = (x<<8n) | BigInt(h[i]); }
-      const rangeBig = BigInt(range);
-      const max64 = (1n<<64n) - 1n;
-      const limit = max64 - (max64 % rangeBig);
       if (x < limit){
-        return Number(x % rangeBig) + min;
+        const result = Number(x % rangeBig) + min;
+        return {
+          value: result,
+          u64: x.toString(),
+          iterations
+        };
       }
+      // else reject and loop
     }
   }
 
   async function drawsFromK(min, max, count){
     const hashes = committed.hashes.slice();
     const results = [];
+    const traces = [];
     for (let i=0;i<count;i++){
-      results.push(await drawInRange(hashes, min, max, i));
+      const det = await drawInRangeDetailed(hashes, min, max, i);
+      results.push(det.value);
+      traces.push(det);
     }
-    return { draws: results, h0: hashes[0] };
+    return { draws: results, h0: hashes[0], traces };
   }
 
   // ---------- Waiting for K consecutive blocks ----------
@@ -250,7 +265,7 @@
   }
 
   // ---------- Rendering ----------
-  function renderResults({ draws, h0, min, max, count }){
+  function renderResults({ draws, h0, min, max, count, traces }){
     const hashesEl = qs('#hashes');
     const numbersEl = qs('#numbers');
     const committedInfo = qs('#committedInfo');
@@ -282,7 +297,7 @@
 
     const longProofHeader = `BBRNG v1|k=${committed.K}|min=${min}|max=${max}|n=${count}`;
     const shortProof = `${longProofHeader}|H0=${h0}`;
-    window.__BBRNG_LAST = { shortProof, longProofHeader, committed, meta:{min,max,count} };
+    window.__BBRNG_LAST = { shortProof, longProofHeader, committed, meta:{min,max,count,draws,traces} };
   }
 
   // ---------- Decimals row (Results) ----------
@@ -405,8 +420,8 @@
           const count2 = clampInt(parseInt(qs('#count')?.value,10), 1, 10);
           const min2 = parseInt(qs('#min')?.value,10);
           const max2 = parseInt(qs('#max')?.value,10);
-          const { draws, h0 } = await drawsFromK(min2, max2, count2);
-          renderResults({ draws, h0, min:min2, max:max2, count:count2 });
+          const { draws, h0, traces } = await drawsFromK(min2, max2, count2);
+          renderResults({ draws, h0, min:min2, max:max2, count:count2, traces });
           toggleDecimalsRow();
 
           if (generator) generator.classList.add('hidden');
@@ -459,6 +474,26 @@
             } catch(e){}
           }
         }
+        // Append R-lines with actual numbers
+        if (last.meta && Array.isArray(last.meta.draws)){
+          for (let i=0;i<last.meta.draws.length;i++){
+            lines.push(`R${i}=${last.meta.draws[i]}`);
+          }
+        }
+        // Append formula section
+        if (last.meta){
+          const M = (last.meta.max - last.meta.min + 1);
+          lines.push('FORMULA:');
+          lines.push(`M = max - min + 1 = ${last.meta.max} - ${last.meta.min} + 1 = ${M}`);
+          if (Array.isArray(last.meta.traces)){
+            for (let i=0;i<last.meta.traces.length;i++){
+              const tr = last.meta.traces[i];
+              lines.push(`R${i} = ${last.meta.min} + (U64_${i} mod ${M}) = ${last.meta.draws[i]}`);
+              lines.push(`U64_${i}=${tr.u64}, accepted_after=${tr.iterations} iteration(s)`);
+            }
+          }
+        }
+
         const refInput = qs('#note-url');
         const ref = refInput && refInput.value ? refInput.value.trim() : '';
         if (ref) lines.push(`ref=${ref}`);

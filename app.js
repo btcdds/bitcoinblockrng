@@ -1,12 +1,7 @@
 'use strict';
-/* Bitcoin Block RNG — app.js (v3.4)
- * Changes:
- *  - Proofs are human-readable (no "v1").
- *  - Short Proof: compact summary + seed block (H0) in hex.
- *  - Long Proof: labeled hashes (hex + optional decimal per line), results listed,
- *    and a plain-English computation section (no "U64_i" jargon).
- *  - Copies of Public Timestamp (commit) and both proofs append: "#BitcoinBlockRNG bitcoinblockrng.com"
- *  - Keeps earlier fixes: robust nav, Block # pill, big result badges, provider fallback, unbiased RNG.
+/* Bitcoin Block RNG — app.js (v3.4.1)
+ * Fix: clipboard text uses actual newlines (\n) instead of the literal characters "\n".
+ * Also includes the human-readable proofs + hashtag from v3.4.
  */
 
 (function(){
@@ -114,7 +109,6 @@
     const primary = providers[pref] || providers.mempool;
     const secondary = (primary === providers.mempool) ? providers.blockstream : providers.mempool;
 
-    // Try primary then fallback
     let prov = primary;
     for (let attempt = 0; attempt < 2; attempt++){
       try{
@@ -144,7 +138,7 @@
         if (sinceEl) sinceEl.textContent = 'Since last block: ' + fmtDuration(since);
 
         const remaining = (committed && !committed.done) ? committed.hashes.reduce((n,h) => n + (h?0:1), 0) : 0;
-        const target = remaining * 600; // ~10 min per block
+        const target = remaining * 600;
         const diff = target - since;
         if (etaEl){
           etaEl.textContent = remaining > 0
@@ -180,7 +174,6 @@
     return new Uint8Array(digest);
   }
 
-  // Deterministic, unbiased draw with rejection sampling. Trace includes accepted 64-bit value and iterations.
   async function drawInRangeDetailed(hashes, min, max, drawIndex){
     const range = (max - min + 1);
     if (range <= 0) throw new Error('Bad range');
@@ -210,7 +203,6 @@
         const result = Number(x % rangeBig) + min;
         return { value: result, u64: x.toString(), iterations };
       }
-      // else: reject and loop
     }
   }
 
@@ -291,7 +283,7 @@
       `Range: ${min}–${max}`,
       `Count of numbers: ${count}`,
       `Seed block (H0, hex): ${h0}`
-    ].join('\\n');
+    ].join('\n'); // <-- real newline at runtime
 
     window.__BBRNG_LAST = { shortProof, committed, meta:{min,max,count,draws,traces} };
   }
@@ -302,16 +294,6 @@
     if (!row) return;
     const shouldShow = committed && committed.K >= 2;
     row.classList.toggle('hidden', !shouldShow);
-  }
-  function toDecimalListFromHex(hexList){
-    if (!Array.isArray(hexList)) return [];
-    const out = [];
-    for (const hx of hexList){
-      if (!hx || typeof hx !== 'string') continue;
-      const clean = hx.trim().replace(/^0x/i,'');
-      try { out.push(BigInt('0x' + clean).toString(10)); } catch(e){}
-    }
-    return out;
   }
 
   // ---------- Wire up UI ----------
@@ -337,9 +319,9 @@
           if (!ta || !ta.value) return;
           const payload = [
             'Bitcoin Block RNG — Public Timestamp',
-            ta.value, // machine-readable canonical commit line
+            ta.value,
             '#BitcoinBlockRNG bitcoinblockrng.com'
-          ].join('\\n');
+          ].join('\n'); // <-- real newline at runtime
           await navigator.clipboard.writeText(payload);
           toast('Public timestamp copied.');
         }catch(e){ showCopyFallback(qs('#commit-string')?.value || ''); }
@@ -455,7 +437,7 @@
         const lines = [ last.shortProof ];
         if (ref) lines.push(`Reference: ${ref}`);
         lines.push('#BitcoinBlockRNG bitcoinblockrng.com');
-        const payload = lines.join('\\n');
+        const payload = lines.join('\n'); // <-- real newline at runtime
         try{
           await navigator.clipboard.writeText(payload);
           toast('Short proof copied.');
@@ -514,7 +496,7 @@
         }
         lines.push('#BitcoinBlockRNG bitcoinblockrng.com');
 
-        const payload = lines.join('\\n');
+        const payload = lines.join('\n'); // <-- real newline at runtime
         try{
           await navigator.clipboard.writeText(payload);
           toast('Long proof copied.');
@@ -527,7 +509,6 @@
       on(verifyBtn, 'click', () => {
         const s = (verifyShortBox?.value || '').trim();
         if (!s){ verifyStatus.textContent = 'Paste a short proof first.'; return; }
-        // Basic sanity: header + H0 line must exist
         if (s.includes('Bitcoin Block RNG — Short Proof') && s.includes('Seed block (H0')){
           verifyStatus.textContent = 'Short proof format looks valid.';
         } else {

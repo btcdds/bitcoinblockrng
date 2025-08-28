@@ -1,7 +1,10 @@
 'use strict';
-/* Bitcoin Block RNG — app.js (v3.4.1)
- * Fix: clipboard text uses actual newlines (\n) instead of the literal characters "\n".
- * Also includes the human-readable proofs + hashtag from v3.4.
+/* Bitcoin Block RNG — app.js (v3.5)
+ * New:
+ *  - Progress boxes next to ETA when K > 1. Each box fills as a block arrives.
+ *  - No HTML changes needed; boxes are injected dynamically.
+ * Keeps:
+ *  - v3.4.1 newline fixes, human-readable proofs, hashtag, big number badges, provider fallback.
  */
 
 (function(){
@@ -36,17 +39,24 @@
     toast('Copy failed; use manual copy box.');
   }
 
-  // ---------- Inject styles for big result numbers ----------
+  // ---------- Inject styles for big result numbers & K-progress ----------
   function ensureStyles(){
     try {
       if (!document.getElementById('bbrng-style')) {
         const st = document.createElement('style'); st.id = 'bbrng-style';
         st.textContent = [
+          /* numbers */
           '.rng-number-grid{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px}',
           '.rng-number-badge{display:inline-flex;align-items:center;justify-content:center;',
           'font-size:clamp(32px,6vw,72px);line-height:1.1;font-weight:800;',
           'padding:12px 18px;border:2px solid currentColor;border-radius:12px;',
-          'min-width:72px;box-shadow:0 1px 6px rgba(0,0,0,.12)}'
+          'min-width:72px;box-shadow:0 1px 6px rgba(0,0,0,.12)}',
+          /* progress */
+          '#kProgress{display:inline-flex;gap:6px;margin-left:10px;vertical-align:middle}',
+          '#kProgress .k-box{width:14px;height:14px;border:2px solid currentColor;border-radius:3px;display:inline-block;opacity:.6;position:relative}',
+          '#kProgress .k-box.checked{background:currentColor;opacity:1}',
+          '#kProgress .k-box.checked::after{content:"";position:absolute;inset:2px;background:rgba(255,255,255,.75);border-radius:2px}',
+          '#kProgress .k-label{margin-right:6px;font-size:12px;opacity:.8}'
         ].join('');
         document.head.appendChild(st);
       }
@@ -149,6 +159,62 @@
     }, 1000);
   }
 
+  // ---------- K-progress UI ----------
+  function ensureKProgressContainer(){
+    let wrap = qs('#kProgress');
+    if (!wrap){
+      wrap = document.createElement('span');
+      wrap.id = 'kProgress';
+      const etaEl = qs('#eta');
+      if (etaEl && etaEl.parentNode){
+        etaEl.insertAdjacentElement('afterend', wrap);
+      } else {
+        document.body.appendChild(wrap);
+      }
+    }
+    return wrap;
+  }
+
+  function setupKProgress(K){
+    const wrap = ensureKProgressContainer();
+    wrap.innerHTML = '';
+    if (!(K > 1)){
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = 'inline-flex';
+    const sr = document.createElement('span');
+    sr.className = 'k-label';
+    sr.textContent = 'Progress:';
+    wrap.appendChild(sr);
+    for (let i=0;i<K;i++){
+      const box = document.createElement('span');
+      box.className = 'k-box';
+      box.setAttribute('aria-label', `Block ${i+1} received`);
+      box.setAttribute('role', 'checkbox');
+      box.setAttribute('aria-checked', 'false');
+      wrap.appendChild(box);
+    }
+  }
+
+  function markKProgress(index){
+    const wrap = ensureKProgressContainer();
+    const boxes = wrap.querySelectorAll('.k-box');
+    const box = boxes && boxes[index];
+    if (box){
+      box.classList.add('checked');
+      box.setAttribute('aria-checked', 'true');
+    }
+  }
+
+  function resetKProgressFromCommitted(){
+    if (!committed) return;
+    setupKProgress(committed.K);
+    if (committed.hashes && committed.hashes.length){
+      committed.hashes.forEach((h,i)=>{ if (h) markKProgress(i); });
+    }
+  }
+
   // ---------- Commit string helpers ----------
   function canonicalString({ prov, t, s, k, min, max, n }){
     return `prov=${prov}|tip=${t}|start=${s}|k=${k}|min=${min}|max=${max}|n=${n}`;
@@ -237,6 +303,7 @@
         if (!hash) await new Promise(r => setTimeout(r, 5000));
       }
       committed.hashes[i] = hash;
+      markKProgress(i);
       try {
         const b = await prov.block(hash);
         const tipH = h;
@@ -283,7 +350,7 @@
       `Range: ${min}–${max}`,
       `Count of numbers: ${count}`,
       `Seed block (H0, hex): ${h0}`
-    ].join('\n'); // <-- real newline at runtime
+    ].join('\\n'); // runtime newline
 
     window.__BBRNG_LAST = { shortProof, committed, meta:{min,max,count,draws,traces} };
   }
@@ -321,7 +388,7 @@
             'Bitcoin Block RNG — Public Timestamp',
             ta.value,
             '#BitcoinBlockRNG bitcoinblockrng.com'
-          ].join('\n'); // <-- real newline at runtime
+          ].join('\\n');
           await navigator.clipboard.writeText(payload);
           toast('Public timestamp copied.');
         }catch(e){ showCopyFallback(qs('#commit-string')?.value || ''); }
@@ -373,6 +440,8 @@
             if (copyCommitBtn) copyCommitBtn.classList.remove('hidden');
 
             commitPrepared = true;
+            // show progress stub
+            setupKProgress(K);
             toast('Commit created. Copy it, post it, then press Begin again.');
             return;
           }catch(e){
@@ -393,6 +462,8 @@
             const tipH = parseInt((tipRaw||'').toString().trim(), 10);
             committed = { tipAtCommit: tipH, startHeight: tipH+1, K, providerName, hashes:new Array(K).fill(null), done:false };
           }
+          // Initialize progress UI for this run
+          resetKProgressFromCommitted();
 
           await waitForCommittedBlocks(waitController);
           if (waitController.cancelled){
@@ -407,6 +478,8 @@
           renderResults({ draws, h0, min:min2, max:max2, count:count2, traces });
           toggleDecimalsRow();
 
+          const generator = qs('#generator');
+          const results = qs('#results');
           if (generator) generator.classList.add('hidden');
           if (results) results.classList.remove('hidden');
 
@@ -437,7 +510,7 @@
         const lines = [ last.shortProof ];
         if (ref) lines.push(`Reference: ${ref}`);
         lines.push('#BitcoinBlockRNG bitcoinblockrng.com');
-        const payload = lines.join('\n'); // <-- real newline at runtime
+        const payload = lines.join('\\n');
         try{
           await navigator.clipboard.writeText(payload);
           toast('Short proof copied.');
@@ -496,7 +569,7 @@
         }
         lines.push('#BitcoinBlockRNG bitcoinblockrng.com');
 
-        const payload = lines.join('\n'); // <-- real newline at runtime
+        const payload = lines.join('\\n');
         try{
           await navigator.clipboard.writeText(payload);
           toast('Long proof copied.');
@@ -516,10 +589,13 @@
         }
       });
 
+      // Boot
       (async function boot(){
         try{ await updateTipMeta(); }catch(e){}
         if (!metaTimer) metaTimer = setInterval(updateTipMeta, 60000);
         startUiTicker();
+        // Set up (hidden) progress container ready for use
+        setupKProgress(0);
       })();
 
       toggleDecimalsRow();

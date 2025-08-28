@@ -1,15 +1,12 @@
 'use strict';
-/* Bitcoin Block RNG — app.js (v3.3)
- * New:
- *  - Long proof now includes R-lines (R0=..., R1=...) with the actual numbers.
- *  - Appends a 'FORMULA' section showing M, and per-draw U64 + evaluation:
- *      R{i} = MIN + (U64_{i} mod M) = RESULT
- *      U64_{i}=..., accepted_after=... iteration(s)
- *    (We use unbiased rejection sampling; the U64 shown is the accepted one.)
- * Previous (v3.2):
- *  - 'Block #' pill label
- *  - Large boxed number badges
- *  - Per-line hashes (H0, H1 ...) with optional H{n}_dec lines
+/* Bitcoin Block RNG — app.js (v3.4)
+ * Changes:
+ *  - Proofs are human-readable (no "v1").
+ *  - Short Proof: compact summary + seed block (H0) in hex.
+ *  - Long Proof: labeled hashes (hex + optional decimal per line), results listed,
+ *    and a plain-English computation section (no "U64_i" jargon).
+ *  - Copies of Public Timestamp (commit) and both proofs append: "#BitcoinBlockRNG bitcoinblockrng.com"
+ *  - Keeps earlier fixes: robust nav, Block # pill, big result badges, provider fallback, unbiased RNG.
  */
 
 (function(){
@@ -72,7 +69,7 @@
   let waitController = null;   // { cancelled: boolean }
 
   // Expose for other modules (copy handlers, etc.)
-  window.__BBRNG_LAST = null;  // { shortProof, longProofHeader, committed, meta:{min,max,count,draws,traces} }
+  window.__BBRNG_LAST = null;  // { shortProof, committed, meta:{min,max,count,draws,traces} }
 
   // ---------- Providers ----------
   const providers = {
@@ -127,11 +124,9 @@
         const lastHashRaw = await prov.hashByHeight(tipH);
         const lastHash = (lastHashRaw || '').toString().trim();
         const b = await prov.block(lastHash);
-        // Most Esplora-like APIs return timestamp in seconds
         setTipState(tipH, b.timestamp || (b.time ? Math.floor(b.time/1000) : null));
         return true;
       }catch(e){
-        // flip to secondary and retry once
         prov = secondary;
       }
     }
@@ -185,7 +180,7 @@
     return new Uint8Array(digest);
   }
 
-  // Deterministic, unbiased draw with rejection sampling.
+  // Deterministic, unbiased draw with rejection sampling. Trace includes accepted 64-bit value and iterations.
   async function drawInRangeDetailed(hashes, min, max, drawIndex){
     const range = (max - min + 1);
     if (range <= 0) throw new Error('Bad range');
@@ -205,7 +200,6 @@
     while(true){
       const h = await sha256Bytes(seed);
       iterations++;
-      // Next seed = hash || salt (domain separation per iteration)
       const nextSeed = new Uint8Array(h.length + salt.length);
       nextSeed.set(h,0); nextSeed.set(salt,h.length);
       seed.set(nextSeed);
@@ -214,13 +208,9 @@
       for (let i=0;i<8;i++){ x = (x<<8n) | BigInt(h[i]); }
       if (x < limit){
         const result = Number(x % rangeBig) + min;
-        return {
-          value: result,
-          u64: x.toString(),
-          iterations
-        };
+        return { value: result, u64: x.toString(), iterations };
       }
-      // else reject and loop
+      // else: reject and loop
     }
   }
 
@@ -295,9 +285,15 @@
       committedInfo.innerHTML = `Commit: <span class="mono">BBRNG-commit ${canon}|crc=${crc}</span>`;
     }
 
-    const longProofHeader = `BBRNG v1|k=${committed.K}|min=${min}|max=${max}|n=${count}`;
-    const shortProof = `${longProofHeader}|H0=${h0}`;
-    window.__BBRNG_LAST = { shortProof, longProofHeader, committed, meta:{min,max,count,draws,traces} };
+    const shortProof = [
+      'Bitcoin Block RNG — Short Proof',
+      `Blocks used: ${committed.K}`,
+      `Range: ${min}–${max}`,
+      `Count of numbers: ${count}`,
+      `Seed block (H0, hex): ${h0}`
+    ].join('\\n');
+
+    window.__BBRNG_LAST = { shortProof, committed, meta:{min,max,count,draws,traces} };
   }
 
   // ---------- Decimals row (Results) ----------
@@ -339,8 +335,13 @@
         try{
           const ta = qs('#commit-string');
           if (!ta || !ta.value) return;
-          await navigator.clipboard.writeText(ta.value);
-          toast('Commit copied.');
+          const payload = [
+            'Bitcoin Block RNG — Public Timestamp',
+            ta.value, // machine-readable canonical commit line
+            '#BitcoinBlockRNG bitcoinblockrng.com'
+          ].join('\\n');
+          await navigator.clipboard.writeText(payload);
+          toast('Public timestamp copied.');
         }catch(e){ showCopyFallback(qs('#commit-string')?.value || ''); }
       });
 
@@ -379,7 +380,7 @@
             if (commitTA){ commitTA.value = commitStr; commitTA.classList.remove('hidden'); }
             if (commitHint){
               commitHint.style.display='block';
-              commitHint.innerHTML = `Post the commit line above <em>publicly</em> (e.g., Nostr) <strong>before</strong> block <strong>#${committed.startHeight.toLocaleString()}</strong> is mined. Then click <em>Begin</em> again.`;
+              commitHint.innerHTML = `Post the line below publicly (e.g., Nostr) <strong>before</strong> block <strong>#${committed.startHeight.toLocaleString()}</strong> is mined, then click <em>Begin</em> again.`;
             }
             const searchLink = qs('#search-nostrband');
             if (nostrLinks){ nostrLinks.classList.remove('hidden'); nostrLinks.style.display='flex'; }
@@ -445,60 +446,75 @@
 
       const copyShortBtn = qs('#copyShort');
       const copyLongBtn  = qs('#copyLong');
+
       on(copyShortBtn, 'click', async () => {
         const last = window.__BBRNG_LAST;
         if (!last || !last.shortProof){ toast('No short proof yet.'); return; }
-        const refInput = qs('#note-url');
+        const refInput = qs('#note-url') || qs('#noteUrl');
         const ref = refInput && refInput.value ? refInput.value.trim() : '';
-        const payload = ref ? `${last.shortProof}|ref=${ref}` : last.shortProof;
+        const lines = [ last.shortProof ];
+        if (ref) lines.push(`Reference: ${ref}`);
+        lines.push('#BitcoinBlockRNG bitcoinblockrng.com');
+        const payload = lines.join('\\n');
         try{
           await navigator.clipboard.writeText(payload);
           toast('Short proof copied.');
         }catch(e){ showCopyFallback(payload); }
       });
+
       on(copyLongBtn, 'click', async () => {
         const last = window.__BBRNG_LAST;
-        if (!last || !last.longProofHeader || !last.committed || !Array.isArray(last.committed.hashes)){
+        if (!last || !last.committed || !Array.isArray(last.committed.hashes) || !last.meta){
           toast('No long proof yet.'); return;
         }
-        const lines = [ last.longProofHeader ];
+        const lines = [];
+        lines.push('Bitcoin Block RNG — Full Proof');
+        lines.push(`Blocks used: ${last.committed.K}`);
+        lines.push(`Range: ${last.meta.min}–${last.meta.max}`);
+        lines.push(`Count of numbers: ${last.meta.count}`);
+        lines.push('');
+        lines.push('Block hashes:');
         const includeDecimals = qs('#include-decimals-results');
         const wantDec = !!(includeDecimals && includeDecimals.checked);
         for (let i=0;i<last.committed.hashes.length;i++){
           const hx = last.committed.hashes[i];
-          lines.push(`H${i}=${hx}`);
+          lines.push(`H${i} (hex): ${hx}`);
           if (wantDec){
             try {
               const dec = BigInt('0x' + String(hx).replace(/^0x/i,'').trim()).toString(10);
-              lines.push(`H${i}_dec=${dec}`);
+              lines.push(`H${i} (decimal): ${dec}`);
             } catch(e){}
           }
         }
-        // Append R-lines with actual numbers
-        if (last.meta && Array.isArray(last.meta.draws)){
+        lines.push('');
+        if (Array.isArray(last.meta.draws)){
+          lines.push('Results:');
           for (let i=0;i<last.meta.draws.length;i++){
-            lines.push(`R${i}=${last.meta.draws[i]}`);
+            lines.push(`Result ${i+1}: ${last.meta.draws[i]}`);
           }
         }
-        // Append formula section
-        if (last.meta){
-          const M = (last.meta.max - last.meta.min + 1);
-          lines.push('FORMULA:');
-          lines.push(`M = max - min + 1 = ${last.meta.max} - ${last.meta.min} + 1 = ${M}`);
-          if (Array.isArray(last.meta.traces)){
-            for (let i=0;i<last.meta.traces.length;i++){
-              const tr = last.meta.traces[i];
-              lines.push(`R${i} = ${last.meta.min} + (U64_${i} mod ${M}) = ${last.meta.draws[i]}`);
-              lines.push(`U64_${i}=${tr.u64}, accepted_after=${tr.iterations} iteration(s)`);
-            }
+        lines.push('');
+        lines.push('Computation details:');
+        const M = (last.meta.max - last.meta.min + 1);
+        lines.push(`Range size (M) = max − min + 1 = ${last.meta.max} − ${last.meta.min} + 1 = ${M}`);
+        if (Array.isArray(last.meta.traces)){
+          for (let i=0;i<last.meta.traces.length;i++){
+            const tr = last.meta.traces[i];
+            lines.push(`Draw ${i+1}:`);
+            lines.push(`  Accepted 64-bit value (base 10): ${tr.u64}`);
+            lines.push(`  Iterations needed: ${tr.iterations}`);
+            lines.push(`  Formula: result = min + (value mod M) = ${last.meta.min} + (value mod ${M}) = ${last.meta.draws[i]}`);
           }
         }
-
-        const refInput = qs('#note-url');
+        const refInput = qs('#note-url') || qs('#noteUrl');
         const ref = refInput && refInput.value ? refInput.value.trim() : '';
-        if (ref) lines.push(`ref=${ref}`);
+        if (ref){
+          lines.push('');
+          lines.push(`Reference: ${ref}`);
+        }
+        lines.push('#BitcoinBlockRNG bitcoinblockrng.com');
 
-        const payload = lines.join('\n');
+        const payload = lines.join('\\n');
         try{
           await navigator.clipboard.writeText(payload);
           toast('Long proof copied.');
@@ -511,9 +527,12 @@
       on(verifyBtn, 'click', () => {
         const s = (verifyShortBox?.value || '').trim();
         if (!s){ verifyStatus.textContent = 'Paste a short proof first.'; return; }
-        const m = s.match(/BBRNG v1\|[^\n\r]+/);
-        if (m) verifyStatus.textContent = 'Looks like a valid short proof line.';
-        else verifyStatus.textContent = 'Could not find a valid short proof line.';
+        // Basic sanity: header + H0 line must exist
+        if (s.includes('Bitcoin Block RNG — Short Proof') && s.includes('Seed block (H0')){
+          verifyStatus.textContent = 'Short proof format looks valid.';
+        } else {
+          verifyStatus.textContent = 'Could not validate the short proof format.';
+        }
       });
 
       (async function boot(){
